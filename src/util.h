@@ -7,12 +7,14 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2017 The University of Edinburgh
+ *  (c) 2010-2020 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk) 
  *  
  ****************************************************************************/
+
+#include <stdint.h>
 
 #ifndef LUDWIG_UTIL_H
 #define LUDWIG_UTIL_H
@@ -23,8 +25,8 @@
 #include "pe.h"
 #include "coords.h"
 
-#define KRONECKER_DELTA_CHAR(d) const char d[3][3] = {{1,0,0},{0,1,0},{0,0,1}}
-#define LEVI_CIVITA_CHAR(e) const char e[3][3][3] =		\
+#define KRONECKER_DELTA_CHAR(d) const int8_t d[3][3] = {{1,0,0},{0,1,0},{0,0,1}}
+#define LEVI_CIVITA_CHAR(e) const int8_t e[3][3][3] =		\
     {{{0, 0, 0}, { 0, 0, 1}, { 0,-1, 0}},			\
      {{0, 0,-1}, { 0, 0, 0}, { 1, 0, 0}},			\
      {{0, 1, 0}, {-1, 0, 0}, { 0, 0, 0}}}
@@ -63,5 +65,7 @@ __host__ int util_matrix_invert(int n, double ** a);
 __host__ int util_random_unit_vector(int * state, double rhat[3]);
 __host__ int util_ranlcg_reap_uniform(int * state, double * r);
 __host__ int util_ranlcg_reap_gaussian(int * state, double r[2]);
+
+__host__ int util_str_tolower(char * str, size_t maxlen);
 
 #endif

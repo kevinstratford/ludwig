@@ -1,6 +1,28 @@
 
 ### Changes
 
+
+version 0.11.0
+- Add external chemical potential gradient in Cahn Hilliard for
+  free energy symmetric. Thanks to Jurij Sablic (jurij.sablic@gmail.com).
+- Add Arrhenius viscosity model for compositional order parameter
+- Add the ability to run both subgrid and fully resolved particles at
+  the same time. Thanks to Qi Kai (kai.qi@epfl.ch) for this.
+- Various code quality updates
+
+version 0.10.0
+- Added an option to fix colloid position or velocity on a per-direction
+  basis, e.g.
+    colloid_isfixedrxyz  1_1_0
+  allows movement in z-direction only. Any value is overridden by
+  colloid_isfixedr. An analogous option colloid_isfixedvxyz is available.
+- Added target thread model information to output
+- Refactored d_ij and e_ijk from char to int8_t to avoid potential
+  pitfalls with default unsigned char.
+
+version 0.9.3
+- Allow stress relaxation option in bare liquid crystal free energy
+
 version 0.9.2
 - Moved input section in porous media docs to online version only
 
