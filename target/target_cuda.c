@@ -17,6 +17,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -90,6 +91,33 @@ __device__ double tdpAtomicAddDouble(double * sum, double val) {
 
 /*****************************************************************************
  *
+ *  tdpAtomicMaxDouble
+ *
+ *****************************************************************************/
+
+__device__ double tdpAtomicMaxDouble(double * address, double val) {
+
+  assert(address);
+
+  if (*address >= val) return *address;
+
+  {
+    unsigned long long * const address_as_ull = (unsigned long long *) address;
+    unsigned long long old = *address_as_ull;
+    unsigned long long assumed;
+
+    do {
+      assumed = old;
+      if (__longlong_as_double(assumed) >= val) break;
+      old = atomicCAS(address_as_ull, assumed, __double_as_longlong(val));
+    } while (assumed != old);
+
+    return __longlong_as_double(old);
+  }
+}
+
+/*****************************************************************************
+ *
  *  tdpAtomicMinDouble
  *
  *****************************************************************************/
@@ -103,7 +131,7 @@ __device__ double tdpAtomicMinDouble(double * minval, double val) {
   do {
     assumed = old;
     old = atomicCAS(address_as_ull, assumed, __double_as_longlong
-		    (fminf(val, __longlong_as_double(assumed))));
+		    (fmin(val, __longlong_as_double(assumed))));
   } while (assumed != old);
 
   return __longlong_as_double(old);

@@ -239,6 +239,8 @@ int interact_stats(interact_t * obj, colloids_info_t * cinfo) {
   
   if (nc > 0) {
 
+    /* Colloid-wall. */
+
     intr = obj->abstr[INTERACT_WALL];
     
     if (intr) {
@@ -255,8 +257,12 @@ int interact_stats(interact_t * obj, colloids_info_t * cinfo) {
       pe_info(obj->pe, "Wall potential energy is:    %14.7e\n", v);
     }
 
+
     if (nc > 1) {
   
+      /* Colloid-colloid lubrication */
+      /* Minimum lubrication distance */
+
       intr = obj->abstr[INTERACT_LUBR];
 
      if (intr) {
@@ -267,6 +273,9 @@ int interact_stats(interact_t * obj, colloids_info_t * cinfo) {
 	MPI_Reduce(&hminlocal, &hmin, 1, MPI_DOUBLE, MPI_MIN, 0, comm);
 	pe_info(obj->pe, "Lubrication minimum h is:    %14.7e\n", hmin);
       }
+
+     /* Pairwise */
+     /* Minimum separation, potential energy */
 
       intr = obj->abstr[INTERACT_PAIR];
 
@@ -283,6 +292,9 @@ int interact_stats(interact_t * obj, colloids_info_t * cinfo) {
 	pe_info(obj->pe, "Pair potential minimum h is: %14.7e\n", hmin);
 	pe_info(obj->pe, "Pair potential energy is:    %14.7e\n", v);
       }
+
+      /* Bonds */
+      /* Min, max bond length; total potential energy */
 
       intr = obj->abstr[INTERACT_BOND];
 
@@ -302,6 +314,9 @@ int interact_stats(interact_t * obj, colloids_info_t * cinfo) {
 	pe_info(obj->pe, "Bond potential maximum r is: %14.7e\n", rmax);
 	pe_info(obj->pe, "Bond potential energy is:    %14.7e\n", v);
       }
+
+      /* Angles */
+      /* Min, max angle; total potential energy */
 
       intr = obj->abstr[INTERACT_ANGLE];
 
@@ -582,7 +597,7 @@ int interact_bonds(interact_t * obj, colloids_info_t * cinfo) {
   assert(cinfo);
 
   intr = obj->abstr[INTERACT_BOND];
-  if (intr) interact_find_bonds(obj, cinfo);
+  if (intr) interact_find_bonds_all(obj, cinfo, 0);
   if (intr) obj->compute[INTERACT_BOND](cinfo, intr);
 
   return 0;
@@ -611,12 +626,34 @@ int interact_angles(interact_t * obj, colloids_info_t * cinfo) {
  *
  *  interact_find_bonds
  *
- *  Examine the local colloids and match any bonded interactions
- *  in terms of pointers.
+ *  For backwards compatability, the case where only local bonds are
+ *  included (nextra = 0).
  *
  *****************************************************************************/
 
 int interact_find_bonds(interact_t * obj, colloids_info_t * cinfo) {
+
+  assert(obj);
+  assert(cinfo);
+
+  interact_find_bonds_all(obj, cinfo, 0);
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  interact_find_bonds_all
+ *
+ *  Examine the local colloids and match any bonded interactions
+ *  in terms of pointers.
+ *
+ *  Include nextra cells in each direction into the halo region.
+ *
+ *****************************************************************************/
+
+int interact_find_bonds_all(interact_t * obj, colloids_info_t * cinfo,
+			    int nextra) {
 
   int ic1, jc1, kc1, ic2, jc2, kc2;
   int di[2], dj[2], dk[2];
@@ -634,11 +671,11 @@ int interact_find_bonds(interact_t * obj, colloids_info_t * cinfo) {
 
   colloids_info_ncell(cinfo, ncell);
 
-  for (ic1 = 1; ic1 <= ncell[X]; ic1++) {
+  for (ic1 = 1 - nextra; ic1 <= ncell[X] + nextra; ic1++) {
     colloids_info_climits(cinfo, X, ic1, di); 
-    for (jc1 = 1; jc1 <= ncell[Y]; jc1++) {
+    for (jc1 = 1 - nextra; jc1 <= ncell[Y] + nextra; jc1++) {
       colloids_info_climits(cinfo, Y, jc1, dj);
-      for (kc1 = 1; kc1 <= ncell[Z]; kc1++) {
+      for (kc1 = 1 - nextra; kc1 <= ncell[Z] + nextra; kc1++) {
         colloids_info_climits(cinfo, Z, kc1, dk);
 
         colloids_info_cell_list_head(cinfo, ic1, jc1, kc1, &pc1);
@@ -673,7 +710,7 @@ int interact_find_bonds(interact_t * obj, colloids_info_t * cinfo) {
 	        }
 	      }
 	    }
-          }
+	  }
 	}
       }
     }

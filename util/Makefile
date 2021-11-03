@@ -11,7 +11,7 @@
 #  Edinburgh Soft Matter and Statistical Physics Group and
 #  Edinburgh Parallel Computing Centre
 #
-#  (c) 2016-2019 The University of Edinburgh
+#  (c) 2016-2021 The University of Edinburgh
 #
 #  Contributing authors:
 #  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -37,6 +37,8 @@ build:
 	$(MAKE) capillary
 	$(MAKE) colloid_init
 	$(MAKE) extract_colloids
+	$(MAKE) coll_squ_subgrid_init
+	$(MAKE) multi_poly_init
 
 colloid_init: colloid_init.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -44,19 +46,27 @@ colloid_init: colloid_init.o
 extract_colloids: extract_colloids.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
+extract_squirmer_polymer: extract_squirmer_polymer.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
 capillary: capillary.o
-	$(CC) $(LDFLAGS) -o $@ $^ -lm
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS) -lm
 
 extract: extract.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
+coll_squ_subgrid_init: coll_squ_subgrid_init.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+multi_poly_init: multi_poly_init.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # Default rules
 
 .PHONY : clean
 clean:
-	rm -f *.o colloid_init extract_colloids capillary extract
-
+	rm -f *.o colloid_init extract_colloids capillary extract \
+	coll_squ_subgrid_init multi_poly_init
 
 .SUFFIXES:
 .SUFFIXES: .c .o

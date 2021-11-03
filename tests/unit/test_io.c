@@ -56,8 +56,6 @@ int test_io_suite(void) {
   do_test_io_info_struct(pe, cs);
 
   test_io_info_create_impl_a(pe, cs);
-  /* if (pe_size() == cart_size(X)) test_processor_independent();
-     test_ascii();*/
 
   pe_info(pe, "PASS     ./unit/test_io\n");
   cs_free(cs);
@@ -84,19 +82,12 @@ int do_test_io_info_struct(pe_t * pe, cs_t * cs) {
 
   sprintf(stubp, "/tmp/temp-test-io-file");
 
-  /*
-  info("\nTesting io info struct...\n");
-  info("Allocating one io_info object...");
-  */
-
   args.grid[X] = 1;
   args.grid[Y] = 1;
   args.grid[Z] = 1;
 
   io_info_create(pe, cs, &args, &io_info);
   assert(io_info);
-
-  /* info("Address of write function %p\n", test_write_1);*/
 
   io_info_set_name(io_info, "Test double data");
   io_info_set_bytesize(io_info, IO_FORMAT_BINARY, sizeof(double));
@@ -106,8 +97,6 @@ int do_test_io_info_struct(pe_t * pe, cs_t * cs) {
 
   io_info_format_set(io_info, IO_FORMAT_BINARY, IO_FORMAT_BINARY);
   io_info_set_processor_dependent(io_info);
-
-  /* info("Testing write to filename stub %s ...", stub);*/
 
   io_write_data(io_info, stubp, &data);
   MPI_Barrier(MPI_COMM_WORLD);
@@ -168,18 +157,19 @@ __host__ int test_io_info_create_impl_a(pe_t * pe, cs_t * cs) {
   impl.bytesize_ascii  = 10;
   impl.bytesize_binary = sizeof(double);
 
-  io_info_create_impl(pe, cs, args, impl, &info);
+  io_info_create_impl(pe, cs, args, &impl, &info);
 
   assert(info);
 
   {
     /* Copied implementation correctly... */
-    assert(info->pe == pe);
-    assert(info->cs == cs);
-    assert(info->impl.write_binary    == impl.write_binary);
-    assert(info->impl.read_binary     == impl.read_binary);
-    assert(info->impl.write_ascii     == impl.write_ascii);
-    assert(info->impl.read_ascii      == impl.read_ascii);
+    assert((info->pe == pe));
+    assert((info->cs == cs));
+    assert((info->impl.write_binary    == impl.write_binary));
+    assert((info->impl.read_binary     == impl.read_binary));
+    assert((info->impl.write_ascii     == impl.write_ascii));
+    assert((info->impl.read_ascii      == impl.read_ascii));
+
     assert(info->impl.bytesize_ascii  == impl.bytesize_ascii);
     assert(info->impl.bytesize_binary == impl.bytesize_binary);
   }

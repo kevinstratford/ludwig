@@ -72,6 +72,7 @@ fi
 
 # Get rid of:
 #   - line with the versiosn number "Welcome to Ludwig"
+#   - Compiler information
 #   - timer statistics identified via "call)" or "calls)"
 #   - blank lines
 #   - "Timer resolution"
@@ -80,8 +81,13 @@ fi
 sed '/call)/d' $1 > test-diff-tmp.ref
 sed -i~ '/calls)/d' test-diff-tmp.ref
 sed -i~ '/Welcome/d' test-diff-tmp.ref
+sed -i~ '/Compiler:/d' test-diff-tmp.ref
+sed -i~ '/..name:/d' test-diff-tmp.ref
+sed -i~ '/..version-string:/d' test-diff-tmp.ref
 sed -i~ '/Target thread model:/d' test-diff-tmp.ref
+sed -i~ '/Default threads per block/d' test-diff-tmp.ref
 sed -i~ '/OpenMP/d' test-diff-tmp.ref
+sed -i~ '/Note assertions/d' test-diff-tmp.ref
 sed -i~ '/^$/d' test-diff-tmp.ref
 sed -i~ '/Timer/d' test-diff-tmp.ref
 sed -i~ '/user.parameters.from/d' test-diff-tmp.ref
@@ -90,12 +96,19 @@ sed -i~ 's/d3q15\ R/d3q15/' test-diff-tmp.ref
 sed -i~ 's/d3q19\ R/d3q19/' test-diff-tmp.ref
 sed -i~ '/GPU\ INFO/d' test-diff-tmp.ref
 sed -i~ '/SIMD\ vector/d' test-diff-tmp.ref
+sed -i~ '/Start time/d' test-diff-tmp.ref
+sed -i~ '/End time/d' test-diff-tmp.ref
 
 sed '/call)/d' $2 > test-diff-tmp.log
 sed -i~ '/calls)/d' test-diff-tmp.log
 sed -i~ '/Welcome/d' test-diff-tmp.log
+sed -i~ '/Compiler:/d' test-diff-tmp.log
+sed -i~ '/..name:/d' test-diff-tmp.log
+sed -i~ '/..version-string:/d' test-diff-tmp.log
 sed -i~ '/Target thread model:/d' test-diff-tmp.log
+sed -i~ '/Default threads per block/d' test-diff-tmp.log
 sed -i~ '/OpenMP/d' test-diff-tmp.log
+sed -i~ '/Note assertions/d' test-diff-tmp.log
 sed -i~ '/SVN.revision/d' test-diff-tmp.log
 sed -i~ '/^$/d' test-diff-tmp.log
 sed -i~ '/Timer/d' test-diff-tmp.log
@@ -105,6 +118,8 @@ sed -i~ 's/d3q15\ R/d3q15/' test-diff-tmp.log
 sed -i~ 's/d3q19\ R/d3q19/' test-diff-tmp.log
 sed -i~ '/GPU\ INFO/d' test-diff-tmp.log
 sed -i~ '/SIMD\ vector/d' test-diff-tmp.log
+sed -i~ '/Start time/d' test-diff-tmp.log
+sed -i~ '/End time/d' test-diff-tmp.log
 
 # Here we use the floating point diff to measure "success"
 

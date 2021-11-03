@@ -136,17 +136,13 @@ int nernst_planck_driver(psi_t * psi, fe_t * fel, hydro_t * hydro, map_t * map) 
    * whole lot are then subject to no normal flux BCs. */
 
   /* Add advective fluxes based on six-point stencil */
-  if (hydro) {
-    /* Compute advective fluxes */
-  }
+  /* Should be here. */
 
   /* Add diffusive fluxes based on six-point stencil */
   nernst_planck_fluxes(psi, fel, fe, fy, fz);
 
   /* Apply no flux BC for six-point stencil */
-  if (map) {
-    /* Apply no flux boundary condition. */
-  }
+  /* Should be here. */
 
   /* Update charge distribution */
   nernst_planck_update(psi, fe, fy, fz);
@@ -348,7 +344,7 @@ int nernst_planck_driver_d3qx(psi_t * psi, fe_t * fe, hydro_t * hydro,
   psi_nk(psi, &nk);
 
   /* Allocate fluxes and initialise to zero */
-  flx = (double **) calloc(psi->nsites*nk, sizeof(double *));
+  flx = (double **) calloc((size_t) psi->nsites*nk, sizeof(double *));
   assert(flx);
   if (flx == NULL) pe_fatal(psi->pe, "calloc(flx) failed\n");
 

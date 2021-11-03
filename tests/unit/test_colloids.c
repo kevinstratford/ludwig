@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2016 The University of Edinburgh
+ *  (c) 2010-2021 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -20,7 +20,7 @@
 
 #include "pe.h"
 #include "coords.h"
-#include "colloids_s.h"
+#include "colloids.h"
 #include "tests.h"
 
 int test_colloids_info_with_ncell(pe_t * pe, cs_t * cs, int ncellref[3]);
@@ -169,7 +169,7 @@ int test_colloids_info_add_local(colloids_info_t * cinfo) {
 
   colloids_info_ntotal_set(cinfo);
   colloids_info_ntotal(cinfo, &ncolloid);
-  /* test_assert(ncolloid == pe_size()); sz required */
+  /* ncolloi should be pe_size() */
 
   /* Check the colloid is in the cell */
 
@@ -216,7 +216,6 @@ int test_colloids_info_cell_coords(colloids_info_t * cinfo) {
   r[Z] = lmin[Z] + 1.0*noffset[Z] + 0.5*delta;
 
   colloids_info_cell_coords(cinfo, r, icell);
-  /* verbose("A cell %d %d %d\n", icell[X], icell[Y], icell[Z]);*/
   test_assert(icell[X] == 1);
   test_assert(icell[Y] == 1);
   test_assert(icell[Z] == 1);
@@ -228,7 +227,6 @@ int test_colloids_info_cell_coords(colloids_info_t * cinfo) {
   r[Z] -= lcell[Z];
 
   colloids_info_cell_coords(cinfo, r, icell);
-  /* verbose("B cell %d %d %d\n", icell[X], icell[Y], icell[Z]);*/
   test_assert(icell[X] == 0);
   test_assert(icell[Y] == 0);
   test_assert(icell[Z] == 0);
@@ -240,7 +238,6 @@ int test_colloids_info_cell_coords(colloids_info_t * cinfo) {
   r[Z] += 2.0*lcell[Z];
 
   colloids_info_cell_coords(cinfo, r, icell);
-  /* verbose("C cell %d %d %d\n", icell[X], icell[Y], icell[Z]);*/
   test_assert(icell[X] == 2);
   test_assert(icell[Y] == 2);
   test_assert(icell[Z] == 2);
@@ -253,7 +250,6 @@ int test_colloids_info_cell_coords(colloids_info_t * cinfo) {
   r[Z] -= delta;
 
   colloids_info_cell_coords(cinfo, r, icell);
-  /* verbose("D cell %d %d %d\n", icell[X], icell[Y], icell[Z]);*/
   test_assert(icell[X] == 1);
   test_assert(icell[Y] == 1);
   test_assert(icell[Z] == 1);
@@ -266,7 +262,6 @@ int test_colloids_info_cell_coords(colloids_info_t * cinfo) {
   r[Z] += 1.0*nlocal[Z];
 
   colloids_info_cell_coords(cinfo, r, icell);
-  /* verbose("E cell %d %d %d\n\n", icell[X], icell[Y], icell[Z]);*/
 
   test_assert(icell[X] == ncell[X] + 1);
   test_assert(icell[Y] == ncell[Y] + 1);

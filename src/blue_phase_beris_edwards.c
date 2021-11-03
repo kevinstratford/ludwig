@@ -31,7 +31,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2009-2020 The University of Edinburgh
+ *  (c) 2009-2021 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -54,9 +54,7 @@
 #include "blue_phase_beris_edwards.h"
 #include "advection_s.h"
 #include "field_s.h"
-#include "field_grad_s.h"
-#include "colloids_s.h"
-#include "map_s.h"
+#include "colloids.h"
 #include "timer.h"
 
 __host__ int beris_edw_update_driver(beris_edw_t * be, field_t * fq,
@@ -325,7 +323,7 @@ __host__ int beris_edw_update_host(beris_edw_t * be, fe_t * fe, field_t * fq,
   double gamma;
 
   double chi[NQAB], chi_qab[3][3];
-  double tmatrix[3][3][NQAB];
+  double tmatrix[3][3][NQAB] = {};
   double var = 0.0;
 
   const double dt = 1.0;
@@ -574,7 +572,7 @@ void beris_edw_kernel_v(kernel_ctxt_t * ktx, beris_edw_t * be,
     int ic[NSIMDVL], jc[NSIMDVL], kc[NSIMDVL];
     int indexj[NSIMDVL], indexk[NSIMDVL];
     int maskv[NSIMDVL];
-    int status;
+    int status = 0;
 
     double q[3][3][NSIMDVL];
     double w[3][3][NSIMDVL];

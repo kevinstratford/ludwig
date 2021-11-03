@@ -8,7 +8,7 @@
  *  Edinburgh Parallel Computing Centre
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
- *  (c) 2010-2016 The University of Edinburgh
+ *  (c) 2010-2021 The University of Edinburgh
  *
  *****************************************************************************/
 
@@ -40,9 +40,9 @@ int test_colloid_suite(void) {
   int rank;
   char filename[FILENAME_MAX];
 
-  colloid_state_t sref = {1, 3, 2, 4, 5, 6, 7, 8, 9,
-			  {10, 11}, 12, {13, 14, 15}, {16, 17, 18},
-			  {19, 20, 21, 22, 23, 24,
+  colloid_state_t sref = {1, 2, 3, 4, 5, 6, 7, 8, 9,
+			  {10, 11}, 12, {13, 14, 15}, {16, 17, 18}, 19,
+			  {20, 21, 22, 23, 24,
 			   25, 26, 27, 28, 29, 30, 31, 32},
 			  1.0, 2.0,
 			  { 3.0,  4.0,  5.0},
@@ -53,17 +53,15 @@ int test_colloid_suite(void) {
 			  18.0, -19.0, 20.0, 21.0,
 			  {22.0, 23.0, 24.0},
 			  25.0, 26.00, 27.0, 28.0,
-                          29.0, 30.0, 31.0, 32.0, {33.0, 34.0, 35.0, 36.0,
-			   37.0, 38.0, 39.0, 40.0, 41.0, 42.0, 43.0, 44.0,
-			   45.0, 46.0, 47.0, 48.0}};
+                          29.0, 30.0, 31.0, 32.0, 33.0, {34.0, 35.0, 36.0,
+			  37.0, 38.0, 39.0, 40.0, 41.0, 42.0, 43.0, 44.0,
+			  45.0, 46.0, 47.0}};
 
   const char * tmp_ascii = "/tmp/temp-test-io-file-ascii";
   const char * tmp_binary = "/tmp/temp-test-io-file-binary";
 
   assert(tmp_ascii);
   assert(tmp_binary);
-
-  /* printf("sizeof(colloid_state_t) = %ld\n", sizeof(colloid_state_t));*/
 
   /* I assert that the colloid struct is 512 bytes. I.e., don't
    * change it without sorting out the padding. */
@@ -106,7 +104,6 @@ void test_colloid_ascii_io(colloid_state_t * sref, const char * filename) {
   else {
     n = colloid_state_write_ascii(sref, fp);
     fclose(fp);
-    /* printf("wrote ref ascii item to %s\n", filename);*/
     test_assert(n == 0);
   }
 
@@ -119,12 +116,10 @@ void test_colloid_ascii_io(colloid_state_t * sref, const char * filename) {
   else {
     n = colloid_state_read_ascii(&s, fp);
     fclose(fp);
-    /* printf("read ref ascii item from %s\n", filename);*/
     test_assert(n == 0);
   }
 
   test_colloid_compare(&s, sref);
-  /* printf("ascii write/read correct\n");*/
 
   return;
 }
@@ -150,7 +145,6 @@ void test_colloid_binary_io(colloid_state_t * sref, const char * filename) {
   else {
     n = colloid_state_write_binary(sref, fp);
     fclose(fp);
-    /* printf("wrote ref binary item to %s\n", filename);*/
     test_assert(n == 0);
   }
 
@@ -163,12 +157,10 @@ void test_colloid_binary_io(colloid_state_t * sref, const char * filename) {
     n = colloid_state_read_binary(&s, fp);
     fclose(fp);
     test_assert(s.rebuild == 1);
-    /* printf("read binary item from %s %d\n", filename, n);*/
     test_assert(n == 0);
   }
 
   test_colloid_compare(&s, sref);
-  /* printf("binary write/read correct\n");*/
 
   return;
 }

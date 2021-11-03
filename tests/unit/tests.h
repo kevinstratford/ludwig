@@ -6,7 +6,7 @@
  *  Edinburgh Parallel Computing Centre
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
- *  (c) 2010-2020 The University of Edinburgh
+ *  (c) 2010-2021 The University of Edinburgh
  *
  *****************************************************************************/
 
@@ -32,6 +32,7 @@ int test_bp_suite(void);
 int test_bond_fene_suite(void);
 int test_bonds_suite(void);
 int test_build_suite(void);
+int test_ch_suite(void);
 int test_colloid_sums_suite(void);
 int test_colloid_suite(void);
 int test_colloids_info_suite(void);
@@ -40,6 +41,9 @@ int test_coords_suite(void);
 int test_ewald_suite(void);
 int test_fe_electro_suite(void);
 int test_fe_electro_symm_suite(void);
+int test_fe_surfactant1_suite(void);
+int test_fe_symmetric_suite(void);
+int test_fe_ternary_suite(void);
 int test_field_suite(void);
 int test_field_grad_suite(void);
 int test_halo_suite(void);
@@ -51,11 +55,13 @@ int test_le_suite(void);
 int test_kernel_suite(void);
 int test_lubrication_suite(void);
 int test_map_suite(void);
+int test_map_init_suite(void);
 int test_model_suite(void);
 int test_nernst_planck_suite(void);
 int test_noise_suite(void);
 int test_pair_lj_cut_suite(void);
 int test_pair_ss_cut_suite(void);
+int test_pair_ss_cut_ij_suite(void);
 int test_pair_yukawa_suite(void);
 int test_pe_suite(void);
 int test_phi_ch_suite(void);
@@ -67,6 +73,8 @@ int test_random_suite(void);
 int test_rt_suite(void);
 int test_timer_suite(void);
 int test_util_suite(void);
+int test_util_sum_suite(void);
 int test_visc_arrhenius_suite(void);
+int test_wall_suite(void);
 
 #endif

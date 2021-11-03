@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2020 The University of Edinburgh
+ *  (c) 2010-2021 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -24,7 +24,7 @@
 #include "coords.h"
 #include "util.h"
 #include "colloids.h"
-#include "colloids_s.h"
+
 #define RHO_DEFAULT 1.0
 #define DRMAX_DEFAULT 0.8
 
@@ -172,7 +172,8 @@ __host__ int colloids_memcpy(colloids_info_t * info, int flag) {
   tdpGetDeviceCount(&ndevice);
 
   if (ndevice == 0) {
-    assert(info->target == info);
+    /* Bare pointer equality causes HIPCC to choke, hence explicit (()) */
+    assert((info->target == info));
   }
   else {
     colloid_t * tmp;
@@ -1052,8 +1053,8 @@ __host__ int colloids_info_position_update(colloids_info_t * cinfo) {
 	    for (ia = 0; ia < 3; ia++) {
 	      if (coll->s.dr[ia] > cinfo->drmax) ifail = 1;
 	      if (coll->s.isfixedrxyz[ia] == 0) coll->s.r[ia] += coll->s.dr[ia];
-	      /* This should trap NaNs */
-	      if (coll->s.dr[ia] != coll->s.dr[ia]) ifail = 1;
+	      /* Trap NaNs so that we stop */
+	      if (isnan(coll->s.dr[ia])) ifail = 1;
 	    }
 
 	    if (ifail == 1) {

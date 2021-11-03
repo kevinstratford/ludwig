@@ -34,6 +34,7 @@
 int util_svd_check(int m, int n, double ** a);
 int util_random_unit_vector_check(void);
 int util_str_tolower_check(void);
+int util_rectangle_conductance_check(void);
 
 /*****************************************************************************
  *
@@ -74,6 +75,7 @@ int test_util_suite(void) {
   util_random_unit_vector_check();
 
   util_str_tolower_check();
+  util_rectangle_conductance_check();
 
   pe_info(pe, "PASS     ./unit/test_util\n");
   pe_free(pe);
@@ -203,25 +205,17 @@ int util_random_unit_vector_check(void) {
     rmax = dmax(rmax, rhat[2]);
   }
 
-  /*info("Unit vector modulus is %f (ok)\n", rvar);*/
 
   test_assert(rmin >= -1.0);
-  /*info("Component min is %g (ok)\n", rmin);*/
-  
   test_assert(rmax <= +1.0);
-  /*info("Component max is %g (ok)\n", rmax);*/
 
   rmean[0] /= NLARGE;
   rmean[1] /= NLARGE;
   rmean[2] /= NLARGE;
 
   test_assert(fabs(rmean[0]) < STAT_TOLERANCE);
-  /*info("Component <X> is %g (ok)\n", rmean[0]);*/
   test_assert(fabs(rmean[1]) < STAT_TOLERANCE);
-  /*info("Component <Y> is %g (ok)\n", rmean[1]);*/
   test_assert(fabs(rmean[2]) < STAT_TOLERANCE);
-  /*info("Component <Z> is %g (ok)\n", rmean[2]);*/
-
 
   return 0;
 }
@@ -254,4 +248,46 @@ int util_str_tolower_check(void) {
   assert(strncmp(s1, "__12345abcde__", 14) == 0);
 
   return 0;
+}
+
+/*****************************************************************************
+ *
+ *  util_rectangle_conductance_check
+ *
+ *****************************************************************************/
+
+int util_rectangle_conductance_check(void) {
+
+  int ierr = 0;
+  double c = 0.0;
+
+  {
+    /* w must be the larger */
+    double h = 1.0;
+    double w = 2.0;
+
+    ierr = util_rectangle_conductance(w, h, &c);
+    assert(ierr == 0);
+    ierr = util_rectangle_conductance(h, w, &c); /* Wrong! */
+    assert(ierr != 0);
+  }
+
+  {
+    double h = 2.0;
+    double w = 2.0;
+    ierr = util_rectangle_conductance(w, h, &c);
+    assert(ierr == 0);
+  }
+
+
+  {
+    /* Value used for some regression tests */
+    double h = 30.0;
+    double w = 62.0;
+    ierr = util_rectangle_conductance(w, h, &c);
+    assert(ierr == 0);
+    assert(fabs(c - 97086.291)/97086.291 < FLT_EPSILON);
+  }
+
+  return ierr;
 }

@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2017 The University of Edinburgh
+ *  (c) 2010-2021 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -117,8 +117,6 @@ static void test_model_constants(void) {
     }
   }
 
-  /* info("Model constants ok.\n"); */
-
   return;
 }
 
@@ -136,26 +134,20 @@ static void test_model_velocity_set(void) {
   int i, j, k, p;
   double dij;
   double sum, sumx, sumy, sumz;
+
+  LB_CS2_DOUBLE(cs2);
+  LB_RCS2_DOUBLE(rcs2);
   KRONECKER_DELTA_CHAR(d_);
 
-  /*
-  info("Checking velocities cv etc...\n\n");
-
-  info("The number of dimensions appears to be NDIM = %d\n", NDIM);
-  info("The model appears to have NVEL = %d\n", NVEL);
-  info("Number of hydrodynamic modes: %d\n", 1 + NDIM + NDIM*(NDIM+1)/2);
-  */
+  /* Number of hydrodynamic modes: */
 
   test_assert(NHYDRO == (1 + NDIM + NDIM*(NDIM+1)/2));
 
   /* Speed of sound */
 
-  /* info("The speed of sound is 1/3... ");*/
   test_assert(fabs(rcs2 - 3.0) < TEST_DOUBLE_TOLERANCE);
 
   /* Kronecker delta */
-
-  /* info("Checking Kronecker delta d_ij...");*/
 
   for (i = 0; i < NDIM; i++) {
     for (j = 0; j < NDIM; j++) {
@@ -168,13 +160,13 @@ static void test_model_velocity_set(void) {
     }
   }
 
-  /* info("Checking cv[0][X] = 0 etc...");*/
+  /* Checking cv[0] */
 
   test_assert(cv[0][X] == 0);
   test_assert(cv[0][Y] == 0);
   test_assert(cv[0][Z] == 0);
 
-  /* info("Checking cv[p][X] = -cv[NVEL-p][X] (p != 0) etc..."); */
+  /* Checking cv[p][X] = -cv[NVEL-p][X] (p != 0)  */
 
   for (p = 1; p < NVEL; p++) {
     test_assert(cv[p][X] == -cv[NVEL-p][X]);
@@ -183,8 +175,6 @@ static void test_model_velocity_set(void) {
   }
 
   /* Sum of quadrature weights, velcoities */
-
-  /* info("Checking sum of wv[p]... ");*/
 
   sum = 0.0; sumx = 0.0; sumy = 0.0; sumz = 0.0;
 
@@ -196,16 +186,13 @@ static void test_model_velocity_set(void) {
   }
 
   test_assert(fabs(sum - 1.0) < TEST_DOUBLE_TOLERANCE);
-  /* info("Checking sum of wv[p]*cv[p][X]... "); */
   test_assert(fabs(sumx) < TEST_DOUBLE_TOLERANCE);
-  /* info("Checking sum of wv[p]*cv[p][Y]... "); */
   test_assert(fabs(sumy) < TEST_DOUBLE_TOLERANCE);
-  /* info("Checking sum of wv[p]*cv[p][Z]... "); */
   test_assert(fabs(sumz) < TEST_DOUBLE_TOLERANCE);
 
   /* Quadratic terms = cs^2 d_ij */
 
-  /* info("Checking wv[p]*cv[p][i]*cv[p][j]...");*/
+  /* Checking wv[p]*cv[p][i]*cv[p][j] */
 
   for (i = 0; i < NDIM; i++) {
     for (j = 0; j < NDIM; j++) {
@@ -217,58 +204,33 @@ static void test_model_velocity_set(void) {
     }
   }
 
-  /* info("Checking q_[p][i][j] = cv[p][i]*cv[p][j] - c_s^2*d_[i][j]...");*/
-
-  for (p = 0; p < NVEL; p++) {
-    for (i = 0; i < NDIM; i++) {
-      for (j = 0; j < NDIM; j++) {
-	sum = cv[p][i]*cv[p][j] - d_[i][j]/rcs2;
-	test_assert(fabs(sum - q_[p][i][j]) < TEST_DOUBLE_TOLERANCE);
-      }
-    }
-  }
-
-  /* info("Checking wv[p]*q_[p][i][j]...");*/
+  /* Checking wv[p]*q_[p][i][j]... */
 
   for (i = 0; i < NDIM; i++) {
     for (j = 0; j < NDIM; j++) {
       sum = 0.0;
       for (p = 0; p < NVEL; p++) {
-	sum += wv[p]*q_[p][i][j];
+	sum += wv[p]*(cv[p][i]*cv[p][j] - cs2*d_[i][j]);
       }
       test_assert(fabs(sum - 0.0) < TEST_DOUBLE_TOLERANCE);
     }
   }
 
-  /* info("Checking wv[p]*cv[p][i]*q_[p][j][k]...");*/
+  /* Checking wv[p]*cv[p][i]*q_[p][j][k]... */
 
   for (i = 0; i < NDIM; i++) {
     for (j = 0; j < NDIM; j++) {
       for (k = 0; k < NDIM; k++) {
 	sum = 0.0;
 	for (p = 0; p < NVEL; p++) {
-	  sum += wv[p]*cv[p][i]*q_[p][j][k];
+	  sum += wv[p]*cv[p][i]*(cv[p][i]*cv[p][j] - cs2*d_[i][j]);
 	}
 	test_assert(fabs(sum - 0.0) < TEST_DOUBLE_TOLERANCE);
       }
     }
   }
 
-  /* No actual test here yet. Requires a theoretical answer. */
-  /* info("Checking d_[i][j]*q_[p][i][j]...");*/
-
-  for (p = 0; p < NVEL; p++) {
-    sum = 0.0;
-    for (i = 0; i < NDIM; i++) {
-      for (j = 0; j < NDIM; j++) {
-	sum += d_[i][j]*q_[p][i][j];
-      }
-    }
-    /* test_assert(fabs(sum - 0.0) < TEST_DOUBLE_TOLERANCE);*/
-    /* info("p = %d sum = %f\n", p, sum);*/
-  }
-
-  /* info("Check ma_ against rho, cv ... ");*/
+  /* Check ma_ against rho, cv conserved quantities */
 
   for (p = 0; p < NVEL; p++) {
     test_assert(fabs(ma_[0][p] - 1.0) < TEST_DOUBLE_TOLERANCE);
@@ -277,19 +239,20 @@ static void test_model_velocity_set(void) {
     }
   }
 
-  /* info("Check ma_ against q_ ...");*/
+  /* Check ma_ against stress modes */
 
   for (p = 0; p < NVEL; p++) {
     k = 0;
     for (i = 0; i < NDIM; i++) {
       for (j = i; j < NDIM; j++) {
-	test_assert(fabs(ma_[1 + NDIM + k++][p] - q_[p][i][j])
+	double q_ij = cv[p][i]*cv[p][j] - cs2*d_[i][j];
+	test_assert(fabs(ma_[1 + NDIM + k++][p] - q_ij)
 		    < TEST_DOUBLE_TOLERANCE);
       }
     }
   }
 
-  /* info("Checking normalisers norm_[i]*wv[p]*ma_[i][p]*ma_[j][p] = dij.");*/
+  /* Checking normalisers norm_[i]*wv[p]*ma_[i][p]*ma_[j][p] = dij. */
 
   for (i = 0; i < NVEL; i++) {
     for (j = 0; j < NVEL; j++) {
@@ -302,7 +265,7 @@ static void test_model_velocity_set(void) {
     }
   }
 
-  /* info("Checking ma_[i][p]*mi_[p][j] = dij ... ");*/
+  /* Checking ma_[i][p]*mi_[p][j] = dij ... */
 
   for (i = 0; i < NVEL; i++) {
     for (j = 0; j < NVEL; j++) {
@@ -362,13 +325,13 @@ int do_test_model_distributions(pe_t * pe, cs_t * cs) {
       assert(fabs(fvalue - fvalue_expected) < DBL_EPSILON);
     }
 
-    /* info("Check zeroth moment... ");*/
+    /* Check zeroth moment... */
 
     fvalue_expected = 0.01*n*NVEL + 1.0;
     lb_0th_moment(lb, index, (lb_dist_enum_t) n, &fvalue);
     assert(fabs(fvalue - fvalue_expected) <= DBL_EPSILON);
 
-    /* info("Check first moment... ");*/
+    /* Check first moment... */
 
     lb_1st_moment(lb, index, (n == 0) ? LB_RHO : LB_PHI, u);
 
@@ -632,11 +595,8 @@ int do_test_lb_model_io(pe_t * pe, cs_t * cs) {
 
   lb_init(lbwr);
   lb_init(lbrd);
-  /* lb_io_info_set(lbwr, info);*/
 
   /* Write */
-
-  /* test_lb_model_write1(lbwr);*/
 
   /* Read */
 

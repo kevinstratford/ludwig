@@ -17,16 +17,22 @@
  *  EINVAL alignment not (2^n)*sizeof(void *)
  *  ENOMEM memory not available
  *
+ *  _POSIX_C_SOURCE 200112L or greater is required for posix_memalign()
+ *  to be visible.
  *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2016-2017 The University of Edinbrugh
+ *  (c) 2016-2021 The University of Edinbrugh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
  *****************************************************************************/
+
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200112L
+#endif
 
 #include <assert.h>
 #include <stdio.h>
