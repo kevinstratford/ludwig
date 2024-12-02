@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2021 The University of Edinburgh
+ *  (c) 2010-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -22,6 +22,7 @@
 #include "pe.h"
 #include "coords.h"
 #include "colloid_io.h"
+#include "util_fopen.h"
 
 struct colloid_io_s {
   int n_io;                      /* Number of parallel IO group */
@@ -123,6 +124,8 @@ int colloid_io_create(pe_t * pe, cs_t * cs, int io_grid[3],
 
   obj->index = obj->coords[X] + obj->coords[Y]*io_grid[X]
     + obj->coords[Z]*io_grid[X]*io_grid[Y];
+
+  assert(0 <= obj->index && obj->index < pe_mpi_size(pe));
 
   MPI_Comm_split(cartcomm, obj->index, cs_cart_rank(cs), &obj->comm);
   MPI_Comm_rank(obj->comm, &obj->rank);
@@ -320,7 +323,7 @@ int colloid_io_write(colloid_io_t * cio, const char * filename) {
 
   if (cio->rank == 0) {
 
-    fp_state = fopen(filename_io, "w");
+    fp_state = util_fopen(filename_io, "w");
     if (fp_state == NULL) {
       pe_fatal(cio->pe, "Failed to open %s\n", filename_io);
     }
@@ -429,7 +432,7 @@ int colloid_io_write_buffer_binary(FILE * fp, int nc, colloid_state_t * buf) {
 int colloid_io_read(colloid_io_t * cio, const char * filename) {
 
   int    ngroup;
-  char   filename_io[FILENAME_MAX] = {};
+  char   filename_io[FILENAME_MAX] = {0};
   FILE * fp_state;
 
   assert(cio->f_header_read);
@@ -442,7 +445,8 @@ int colloid_io_read(colloid_io_t * cio, const char * filename) {
   if (cio->single_file_read) {
     /* All groups read for single 'serial' file */
     snprintf(filename_io, FILENAME_MAX-1, "%s.%3.3d-%3.3d", filename, 1, 1);
-    pe_info(cio->pe, "colloid_io_read: reading from single file %s\n", filename_io);
+    pe_info(cio->pe, "colloid_io_read: reading from single file %s\n",
+	    filename_io);
   }
   else {
     pe_info(cio->pe, "colloid_io_read: reading from %s etc\n", filename_io);
@@ -450,7 +454,7 @@ int colloid_io_read(colloid_io_t * cio, const char * filename) {
 
   /* Open the file and read the information */
 
-  fp_state = fopen(filename_io, "r");
+  fp_state = util_fopen(filename_io, "r");
   if (fp_state == NULL) pe_fatal(cio->pe, "Failed to open %s\n", filename_io);
 
   cio->f_header_read(fp_state, &ngroup);
@@ -464,6 +468,24 @@ int colloid_io_read(colloid_io_t * cio, const char * filename) {
   fclose(fp_state);
 
   colloid_io_check_read(cio, ngroup);
+  {
+    /* Check for old 'type' component */
+    int ntype = 0;
+    int ntype_updates = colloids_type_check(cio->info);
+    MPI_Allreduce(&ntype_updates, &ntype, 1, MPI_INT, MPI_SUM, cio->comm);
+    if (ntype > 0) {
+      pe_info(cio->pe, "One or more colloids were updated as this looks\n");
+      pe_info(cio->pe, "like an old format input file. See note at\n");
+      pe_info(cio->pe, "https://ludwig.epcc.ed.ac.uk/outputs/colloid.html\n");
+    }
+  }
+  {
+    /* Any ellipsoids must be checked. */
+    int nbad = colloids_ellipsoid_abc_check(cio->info);
+    if (nbad > 0) {
+      pe_exit(cio->pe, "One or more ellipses in input file fail checks\n");
+    }
+  }
 
   return 0;
 }
@@ -735,11 +757,12 @@ int colloid_io_format_output_binary_set(colloid_io_t * cio) {
 
 static int colloid_io_filename(colloid_io_t * cio, char * filename,
 			       const char * stub) {
+
   assert(cio);
   assert(stub);
   assert(strlen(stub) < FILENAME_MAX/2);  /* Check stub not too long */
 
-  if (cio->index >= 1000) {
+  if (cio->n_io > 999 || cio->index > 998) {
     pe_fatal(cio->pe, "Format botch for cio stub %s\n", stub);
   }
 

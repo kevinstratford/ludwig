@@ -47,7 +47,6 @@ N_cycles 10
 ##############################################################################
 
 size 32_32_32
-reduced_halo no
 
 ##############################################################################
 #
@@ -67,7 +66,7 @@ temperature 0.0000096
 ###############################################################################
 
 free_energy lc_droplet
-fe_use_stress_relaxation yes
+fe_force_method           relaxation_antisymmetric
 
 fd_advection_scheme_order 3
 fd_gradient_calculation 3d_7pt_fluid
@@ -102,8 +101,6 @@ lc_activity  0
 lc_q_initialisation o8m
 lc_q_init_amplitude -0.2
 lc_init_redshift 1.0
-
-lc_anchoring_method none
 
 lc_droplet_gamma 2.586
 lc_droplet_delta 0.25 

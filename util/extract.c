@@ -2,6 +2,18 @@
  *
  *  extract.c
  *
+ *  This is under revision as part of the move to new metadata.
+ *  For most users, there will be no need to consolidate
+ *  parallel output. Only post-processing is relevant (unrolling
+ *  Lees Edwards plane, diagonalisation of liquid crystal order parameter).
+ *
+ *  ./extract data-file
+ *
+ *  The relevant metadata file is located from the file stub.
+ *  Most options are still available (see below).
+ *
+ *  Older version ...
+ *
  *  This program deals with the consolidation of parallel I/O
  *  (and in serial with Lees-Edwards planes). This program is
  *  serial.
@@ -24,7 +36,8 @@
  *  -a   Request ASCII output
  *  -b   Request binary output (the default)
  *  -i   Request coordinate indices in output (none by default)
- *  -k   Request VTK header (none by default)
+ *  -k   Request VTK header STRUCTURED_POINTS (none by default)
+ *  -l   Request VTK header RECTILINEAR_GRID
  *
  *  Options relevant to liquid crystal order parameter (only):
  *  -d   Request director output
@@ -47,7 +60,7 @@
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *  Oliver Henrich  (oliver.henrich@strath.ac.uk)
  *
- *  (c) 2011-2020 The University of Edinburgh
+ *  (c) 2011-2023 The University of Edinburgh
  *
  ****************************************************************************/
 
@@ -57,7 +70,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../src/util.h"
+#include "io_metadata.h"
+#include "util.h"
+#include "util_fopen.h"
 
 #define MAXNTOTAL 1024 /* Maximum linear system size */
 
@@ -69,7 +84,7 @@ typedef enum vtk_enum {VTK_SCALARS, VTK_VECTORS} vtk_enum_t;
 typedef struct metadata_v1_s metadata_v1_t;
 
 struct metadata_v1_s {
-  char stub[BUFSIZ/2];         /* file stub */
+  const char * stub;           /* file stub name */
   int nrbyte;                  /* byte per record */
   int is_bigendean;            /* flag */
   int npe;                     /* comm sz */
@@ -92,7 +107,7 @@ int output_binary_ = 0;        /* Switch for format of final output */
 int is_velocity_ = 0;          /* Switch to identify velocity field */
 int output_index_ = 0;         /* For ASCII output, include (i,j,k) indices */
 int output_vtk_ = 0;           /* Write ASCII VTK header */
-
+                               /* 1 = STRUCTURED_POINTS 2 = RECTILINEAR_GRID */
 int output_lcs_ = 0;
 int output_lcd_ = 0;
 int output_lcx_ = 0;
@@ -123,8 +138,16 @@ int write_data_binary_cmf(FILE * fp, int n[3], int nrec0, int nrec, double *);
 
 int site_index(int, int, int, const int nlocal[3]);
 void read_data(FILE *, metadata_v1_t * meta, double *);
+
 int write_vtk_header(FILE * fp, int nrec, int ndim[3], const char * descript,
 		     vtk_enum_t vtk);
+int write_vtk_header_points(FILE * fp, int nrec, int ndim[3],
+			    const char * descript,
+			    vtk_enum_t vtk);
+int write_vtk_header_rectilinear(FILE * fp, int nrec, int ndim[3],
+				 const char * descript,
+				 vtk_enum_t vtk);
+
 int write_qab_vtk(int ntime, int ntargets[3], double * datasection);
 
 int copy_data(metadata_v1_t * metadata, double *, double *);
@@ -134,6 +157,12 @@ void le_unroll(metadata_v1_t * meta, double *);
 
 int lc_transform_q5(int * nlocal, double * datasection);
 int lc_compute_scalar_ops(double q[3][3], double qs[5]);
+
+const char * file_stub_valid(const char * input);
+int file_get_file_nfile(const char * filename);
+int file_get_file_index(const char * filename);
+int extract_process_and_output(const char * stub, int ntime,
+			       io_metadata_t * meta);
 
 /*****************************************************************************
  *
@@ -170,6 +199,10 @@ int main(int argc, char ** argv) {
       output_vtk_ = 1;    /* Request VTK header */
       output_cmf_ = 1;    /* Request column-major format for Paraview */ 
       break;
+    case 'l':
+      output_vtk_ = 2;
+      output_cmf_ = 1;    /* Request column-major format for Paraview */
+      break;
     case 's':
       output_lcs_ = 1; /* Request liquid crystal scalar order parameter */
       break;
@@ -183,12 +216,66 @@ int main(int argc, char ** argv) {
     }   
   }
 
+  /* New metadata format: completely short circuit the original
+     processing via a new driver */
+  if (optind == argc - 1) {
+    /* Must have a recognised metadata quantity */
+    const char * stub = file_stub_valid(argv[argc-1]);
+    if (stub == NULL) {
+      printf("Unrecognised data quantity %s\n", argv[argc-1]);
+      exit(-1);
+    }
+    else {
+      pe_t * pe = NULL;
+      char buf[FILENAME_MAX] = {0};
+      char * filename = buf;
+      int ifail = 0;
+      int itime = 0;
+
+      int ifile = file_get_file_index(argv[argc-1]);
+      int nfile = file_get_file_nfile(argv[argc-1]);
+      io_metadata_t * meta = NULL;
+
+      printf("%s %s\n", argv[0], argv[argc-1]);
+      printf("Identified file name as %s\n", stub);
+      snprintf(filename, FILENAME_MAX, "%s-metadata.%3.3d-%3.3d",
+	       stub, nfile, ifile);
+      printf("Attempt to read metadata file %s\n", filename);
+      pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
+      ifail = io_metadata_from_file(pe, filename, &meta);
+      if (ifail != 0) printf("Failed to read/parse metadata file\n");
+
+      itime = read_data_file_name(argv[argc-1]);
+      ifail = extract_process_and_output(stub, itime, meta);
+      /* Release meta resources */
+      pe_free(pe);
+      printf("Complete processing for %s\n", argv[argc-1]);
+    }
+    exit(0);
+  }
+
+  /* Continue with older invocation <metadata file> <data file> */
   if (optind > argc-2) {
     printf("Usage: %s [-abk] meta-file data-file\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
-  read_meta_data_file(argv[optind], &metadata);
+  {
+    /* Must have a recognised metadata quantity */
+    const char * stub = file_stub_valid(argv[optind]);
+    if (stub == NULL) {
+      printf("Unrecognised metadata file %s\n", argv[optind]);
+      exit(-1);
+    }
+    else {
+      char buf[BUFSIZ] = {0};
+      char * filename = buf;
+      int ifile = file_get_file_index(argv[optind]);
+      int nfile = file_get_file_nfile(argv[optind]);
+      snprintf(filename, BUFSIZ, "%s.%3.3d-%3.3d.meta", stub, nfile, ifile);
+      read_meta_data_file(filename, &metadata);
+    }
+  }
 
   extract_driver(argv[optind+1], &metadata, version);
 
@@ -215,10 +302,11 @@ int extract_driver(const char * filename, metadata_v1_t * meta, int version) {
   FILE * fp_data;
 
   ntime = read_data_file_name(filename);
+  assert(0 <= ntime && ntime < 1000*1000*1000);
 
   /* Work out parallel local file size */
 
-  assert(io_size[0] == 1);
+  assert(io_size[0] == 1); /* No x-decompositions WILL FAIL */
 
   switch (version) {
   case 1:
@@ -273,19 +361,21 @@ int extract_driver(const char * filename, metadata_v1_t * meta, int version) {
 
   if (nrec_ == 5 && strncmp(meta->stub, "q", 1) == 0) {
 
-    if (output_vtk_ == 1) {
+    if (output_vtk_ == 1 || output_vtk_ == 2) {
       /* We mandate this is the transformed Q_ab */
       lc_transform_q5(ntargets, datasection);
       write_qab_vtk(ntime, ntargets, datasection);
     }
     else {
       sprintf(io_data, "q-%8.8d", ntime);
-      fp_data = fopen(io_data, "w+b");
+      fp_data = util_fopen(io_data, "w+b");
       if (fp_data == NULL) {
 	printf("fopen(%s) failed\n", io_data);
 	exit(-1);
       }
 
+      /* Here, we could respect the -d, -s, -x options. */
+      /* But at the moment, always 5 components ... */
       if (output_q_raw_) {
 	printf("Writing raw q to %s\n", io_data);
       }
@@ -309,17 +399,12 @@ int extract_driver(const char * filename, metadata_v1_t * meta, int version) {
 
     /* Write a single file with the final section */
 
-    {
-      char tmp[FILENAME_MAX/2] = {}; /* Avoid potential buffer overflow */
-      strncpy(tmp, meta->stub,
-	      FILENAME_MAX/2 - strnlen(meta->stub, FILENAME_MAX/2-1) - 1);
-      snprintf(io_data, sizeof(io_data), "%s-%8.8d", tmp, ntime);
-    }
+    snprintf(io_data, sizeof(io_data), "%s-%8.8d", meta->stub, ntime);
 
-    if (output_vtk_ == 1) {
+    if (output_vtk_ == 1 || output_vtk_ == 2) {
 
       strcat(io_data, suf);
-      fp_data = fopen(io_data, "w+b");
+      fp_data = util_fopen(io_data, "w+b");
       if (fp_data == NULL) printf("fopen(%s) failed\n", io_data);
       printf("\nWriting result to %s\n", io_data);
 
@@ -339,7 +424,7 @@ int extract_driver(const char * filename, metadata_v1_t * meta, int version) {
     }
     else {
 
-      fp_data = fopen(io_data, "w+b");
+      fp_data = util_fopen(io_data, "w+b");
       if (fp_data == NULL) printf("fopen(%s) failed\n", io_data);
       printf("\nWriting result to %s\n", io_data);
 
@@ -392,7 +477,7 @@ int read_version2(int ntime, metadata_v1_t * meta, double * datasection) {
 	     meta->nio, n);
     printf("-> %s\n", io_data);
 
-    fp_data = fopen(io_data, "r+b");
+    fp_data = util_fopen(io_data, "r+b");
     if (fp_data == NULL) printf("fopen(%s) failed\n", io_data);
 
     /* Read data file based on offsets recorded in the metadata,
@@ -453,7 +538,7 @@ int read_version1(int ntime, metadata_v1_t * meta, double * datasection) {
 	     meta->stub, meta->nio, n);
     printf("Reading metadata file ... %s ", io_metadata);
 
-    fp_metadata = fopen(io_metadata, "r");
+    fp_metadata = util_fopen(io_metadata, "r");
     if (fp_metadata == NULL) printf("fopen(%s) failed\n", io_metadata);
 
     for (p = 0; p < 12; p++) {
@@ -468,7 +553,7 @@ int read_version1(int ntime, metadata_v1_t * meta, double * datasection) {
 	     ntime, meta->nio, n);
     printf("-> %s\n", io_data);
 
-    fp_data = fopen(io_data, "r+b");
+    fp_data = util_fopen(io_data, "r+b");
     if (fp_data == NULL) printf("fopen(%s) failed\n", io_data);
 
     /* Read data file based on offsets recorded in the metadata,
@@ -512,6 +597,7 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
   int nrbyte;
   int ifail;
   char tmp[FILENAME_MAX];
+  char buf[BUFSIZ] = {0};
   char * p;
   FILE * fp_meta;
   const int ncharoffset = 33;
@@ -519,7 +605,7 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
   assert(filename);
   assert(meta);
 
-  fp_meta = fopen(filename, "r");
+  fp_meta = util_fopen(filename, "r");
   if (fp_meta == NULL) {
     printf("fopen(%s) failed\n", filename);
     exit(-1);
@@ -527,19 +613,28 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
 
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
-  ifail = sscanf(tmp+ncharoffset, "%s\n", meta->stub);
+  ifail = sscanf(tmp+ncharoffset, "%s\n", buf);
   if (ifail != 1) {
     printf("Meta data stub not read correctly\n");
     exit(-1);
   }
+  meta->stub = file_stub_valid(buf);
+  if (meta->stub == NULL) {
+    printf("Meta data stub not recognised: %s\n", buf);
+  }
   printf("Read stub: %s\n", meta->stub);
+
+  /* Data description */
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
 
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d\n", &nrbyte);
-  assert(ifail == 1);
+  if (ifail != 1) {
+    printf("Meta data number of bytes in record size not read correctly\n");
+    exit(-1);
+  }
   printf("Record size (bytes): %d\n", nrbyte);
 
   /* PENDING: this deals with different formats until improved meta data
@@ -560,20 +655,29 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d", &input_isbigendian_);
-  assert(ifail == 1);
+  if (ifail != 1) {
+    printf("Meta data endianness not read correctly\n");
+    exit(-1);
+  }
   assert(input_isbigendian_ == 0 || input_isbigendian_ == 1);
 
   p =  fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d\n", &meta->npe);
-  assert(ifail == 1);
+  if (ifail != 1) {
+    printf("Meta data total number of processes not read correctly\n");
+    exit(-1);
+  }
   printf("Total number of processors %d\n", meta->npe);
 
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d %d %d",
 		 &meta->pe[0], &meta->pe[1], &meta->pe[2]);
-  assert(ifail == 3);
+  if (ifail != 3) {
+    printf("Meta data process decomposition not read correctly\n");
+    exit(-1);
+  }
   printf("Decomposition is %d %d %d\n", meta->pe[0], meta->pe[1], meta->pe[2]);
   assert(meta->npe == meta->pe[0]*meta->pe[1]*meta->pe[2]);
 
@@ -581,28 +685,47 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d %d %d",
 		 &meta->ntotal[0], &meta->ntotal[1], &meta->ntotal[2]);
-  assert(ifail == 3);
+  if (ifail != 3) {
+    printf("Meta data system size not read correctly\n");
+    exit(-1);
+  }
   printf("System size is %d %d %d\n",
 	 meta->ntotal[0], meta->ntotal[1], meta->ntotal[2]);
 
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%d", &meta->nplanes);
-  assert(ifail == 1);
+  if (ifail != 1) {
+    printf("Meta data nplanes not read correctly\n");
+    exit(-1);
+  }
   assert(meta->nplanes >= 0);
   printf("Number of Lees Edwards planes %d\n", meta->nplanes);
   p =  fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
   ifail = sscanf(tmp+ncharoffset, "%lf", &le_speed_);
-  assert(ifail == 1);
+  if (ifail != 1) {
+    printf("Meta data LE plane speed not read correctly\n");
+    exit(-1);
+  }
   printf("Lees Edwards speed: %f\n", le_speed_);
 
   /* Number of I/O groups */
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   assert(p);
-  ifail = sscanf(tmp+ncharoffset, "%d", &meta->nio);
-  assert(ifail == 1);
-  printf("Number of I/O groups: %d\n", meta->nio);
+
+  {
+    int nio = atoi(tmp + ncharoffset);
+    if (1 > nio || nio > 999) {
+      printf("Invalid number of i/o groups %d\n", meta->nio);
+      exit(-1);
+    }
+    else {
+      meta->nio = nio;
+    }
+    printf("Number of I/O groups: %d\n", meta->nio);
+  }
+
   /* I/O decomposition */
   p = fgets(tmp, FILENAME_MAX, fp_meta);
   if (p == NULL) printf("Not reached last line correctly\n");
@@ -635,16 +758,25 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
 
 int read_data_file_name(const char * filename) {
 
-  int ntime = -1;
-  const char * tmp;
+  const char * tmp = NULL;
+
+  assert(filename);
 
   tmp = strchr(filename, '-');
   if (tmp) {
-    sscanf(tmp+1, "%d.", &ntime);
+    int ntime = -1;
+    int ns = sscanf(tmp+1, "%d.", &ntime);
+    if (ns < 1) {
+      printf("Could not determine time from %s\n", filename);
+      printf("Please check the file and try again!\n");
+      exit(-1);
+    }
+    else {
+      return ntime;
+    }
   }
 
-  assert (ntime >= 0);
-  return ntime;
+  return -1;
 }
 
 /****************************************************************************
@@ -953,8 +1085,18 @@ void le_unroll(metadata_v1_t * meta, double * data) {
  *
  *****************************************************************************/
 
-int write_vtk_header(FILE * fp, int nrec, int ndim[3], const char * descript,
+int write_vtk_header(FILE * fp, int nrec, int ndim[3], const char * des,
 		     vtk_enum_t vtk) {
+
+  if (output_vtk_ == 1) write_vtk_header_points(fp, nrec, ndim, des, vtk);
+  if (output_vtk_ == 2) write_vtk_header_rectilinear(fp, nrec, ndim, des, vtk);
+
+  return 0;
+}
+
+int write_vtk_header_points(FILE * fp, int nrec, int ndim[3],
+			    const char * descript,
+			    vtk_enum_t vtk) {
 
   assert(fp);
 
@@ -966,6 +1108,60 @@ int write_vtk_header(FILE * fp, int nrec, int ndim[3], const char * descript,
   fprintf(fp, "ORIGIN %d %d %d\n", 0, 0, 0);
   fprintf(fp, "SPACING %d %d %d\n", 1, 1, 1);
   fprintf(fp, "POINT_DATA %d\n", ndim[0]*ndim[1]*ndim[2]);
+  if (vtk == VTK_SCALARS) {
+    fprintf(fp, "SCALARS %s float %d\n", descript, nrec);
+    fprintf(fp, "LOOKUP_TABLE default\n");
+  }
+  if (vtk == VTK_VECTORS) {
+    fprintf(fp, "VECTORS %s float\n", descript);
+  }
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  write_vtk_header_rectilinear
+ *
+ *  Suitable for an ascii file; to be followed by actual data.
+ *
+ *  This one is useful is cell-centre data is the best view;
+ *  we set the coordinates of the cell edges in each dimension.
+ *
+ *****************************************************************************/
+
+int write_vtk_header_rectilinear(FILE * fp, int nrec, int ndim[3],
+				 const char * descript,
+				 vtk_enum_t vtk) {
+
+  assert(fp);
+
+  fprintf(fp, "# vtk DataFile Version 2.0\n");
+  fprintf(fp, "Generated by ludwig extract.c\n");
+  fprintf(fp, "ASCII\n");
+  fprintf(fp, "DATASET RECTILINEAR_GRID\n");
+  fprintf(fp, "DIMENSIONS %d %d %d\n", ndim[0]+1, ndim[1]+1, ndim[2]+1);
+
+  fprintf(fp, "X_COORDINATES %d float\n", ndim[0]+1);
+  for (int ic = 0; ic <= ndim[0]; ic++) {
+    fprintf(fp, " %5.1f", 0.5+ic);
+  }
+  fprintf(fp, "\n");
+
+  fprintf(fp, "Y_COORDINATES %d float\n", ndim[1]+1);
+  for (int jc = 0; jc <= ndim[1]; jc++) {
+    fprintf(fp, " %5.1f", 0.5+jc);
+  }
+  fprintf(fp, "\n");
+
+  fprintf(fp, "Z_COORDINATES %d float\n", ndim[2]+1);
+  for (int kc = 0; kc <= ndim[2]; kc++) {
+    fprintf(fp, " %5.1f", 0.5+kc);
+  }
+  fprintf(fp, "\n");
+
+  fprintf(fp, "CELL_DATA %d", ndim[0]*ndim[1]*ndim[2]);
+
   if (vtk == VTK_SCALARS) {
     fprintf(fp, "SCALARS %s float %d\n", descript, nrec);
     fprintf(fp, "LOOKUP_TABLE default\n");
@@ -999,7 +1195,7 @@ int write_qab_vtk(int ntime, int ntarget[3], double * datasection) {
   /* Scalar order */
   if (output_lcs_) {
     sprintf(io_data, "lcs-%8.8d.vtk", ntime);
-    fp_data = fopen(io_data, "w");
+    fp_data = util_fopen(io_data, "w");
 
     if (fp_data == NULL) {
       printf("fopen(%s) failed\n", io_data);
@@ -1019,7 +1215,7 @@ int write_qab_vtk(int ntime, int ntarget[3], double * datasection) {
 
   if (output_lcd_) {
     sprintf(io_data, "lcd-%8.8d.vtk", ntime);
-    fp_data = fopen(io_data, "w");
+    fp_data = util_fopen(io_data, "w");
 
     if (fp_data == NULL) {
       printf("fopen(%s) failed\n", io_data);
@@ -1039,7 +1235,7 @@ int write_qab_vtk(int ntime, int ntarget[3], double * datasection) {
 
   if (output_lcx_) {
     sprintf(io_data, "lcb-%8.8d.vtk", ntime);
-    fp_data = fopen(io_data, "w");
+    fp_data = util_fopen(io_data, "w");
 
     if (fp_data == NULL) {
       printf("fopen(%s) failed\n", io_data);
@@ -1237,6 +1433,9 @@ int lc_transform_q5(int * nlocal, double * datasection) {
 	for (nr = 0; nr < nrec_; nr++) {
 	  *(datasection + index + nr) = qs[nr];
 	}
+	if (ifail != 0) {
+	  printf("! fail diagonalisation at %3d %3d %3d\n", ic, jc, kc);
+	}
       }
     }
   }
@@ -1281,6 +1480,8 @@ int lc_compute_scalar_ops(double q[3][3], double qs[5]) {
 
   if (ifail == 0) {
 
+    double q4 = 0.0;
+
     qs[0] = eigenvalue[0];
     qs[1] = eigenvector[0][0];
     qs[2] = eigenvector[1][0];
@@ -1291,8 +1492,449 @@ int lc_compute_scalar_ops(double q[3][3], double qs[5]) {
 
     q2 = s*s + t*t + (s + t)*(s + t);
     q3 = 3.0*s*t*(s + t);
-    qs[4] = sqrt(1 - 6.0*q3*q3 / (q2*q2*q2));
+
+    /* Note the value here can dip just below zero by about DBL_EPSILON */
+    /* So just set to zero to prevent an NaN */
+    q4 = 1.0 - 6.0*q3*q3 / (q2*q2*q2);
+    if (q4 < 0.0) q4 = 0.0;
+    qs[4] = sqrt(q4);
   }
 
   return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  file_stub_valid
+ *
+ *  Return a recognised name, or NULL if the input is not recognised.
+ *
+ *****************************************************************************/
+
+const char * file_stub_valid(const char * input) {
+
+  const char * output = NULL;
+
+  if (strncmp(input, "phi", 3) == 0) {
+    output = "phi"; /* scalar order parameter(s) */
+  }
+  else if (strncmp(input, "psi", 3) == 0) {
+    output = "psi"; /* charge */
+  }
+  else if (strncmp(input, "dist", 4) == 0) {
+    output = "dist";  /* distributions */
+  }
+  else if (strncmp(input, "rho", 3) == 0) {
+    output = "rho";   /* density */
+  }
+  else if (strncmp(input, "vel", 3) == 0) {
+    output = "vel";   /* velocity field */
+  }
+  else if (strncmp(input, "p", 1) == 0) {
+    output = "p";   /* vector order parameter */
+  }
+  else if (strncmp(input, "q", 1) == 0) {
+    output = "q";   /* tensor order parameter */
+  }
+
+  return output;
+}
+
+/*****************************************************************************
+ *
+ *  file_get_file_nfile
+ *
+ *  Metadata encoded in a set of parallel, decomposed, filenames e.g.,
+ *    phi-metadata.002-001
+ *    phi-metadata.002-002
+ *  would return nfile = 2.
+ *
+ *****************************************************************************/
+
+int file_get_file_nfile(const char * filename) {
+
+  int nfile = 0;
+  char dot = '.';
+  const char * str1 = strchr(filename, dot); /* First "." */
+
+  if (str1 != NULL) {
+    char buf[BUFSIZ] = {0};
+    strncpy(buf, str1 + 1, 3);
+    nfile = atoi(buf);
+  }
+
+  return nfile;
+}
+
+/*****************************************************************************
+ *
+ *  file_get_file_index
+ *
+ *  Likewise, returns the index (see file_get_file_nfile above).
+ *
+ *****************************************************************************/
+
+int file_get_file_index(const char * filename) {
+
+  int ifile = 0;
+  char dash = '-';
+  const char * str1 = strrchr(filename, dash); /* Last "-" */
+
+  if (str1 != NULL) {
+    char buf[BUFSIZ] = {0};
+    strncpy(buf, str1 + 1, 3);
+    ifile = atoi(buf);
+  }
+
+  return ifile;
+}
+
+/****************************************************************************
+ *
+ *  io_metadata_nrecord
+ *
+ ****************************************************************************/
+
+int io_metadata_nrecord(const io_metadata_t * meta) {
+
+  /* This is still not very satisfactory. Need no. of records in metadata */
+  int nrecord = meta->element.count;
+  if (meta->element.datatype == MPI_CHAR) nrecord /= 23;
+  nrec_ = nrecord;
+
+  return nrecord;
+}
+
+/*****************************************************************************
+ *
+ *  extract_read_single_file
+ *
+ *****************************************************************************/
+
+int extract_read_single_file(io_metadata_t * meta, const char * stub,
+			     int itime, double * datatotal) {
+
+  int nrecord = io_metadata_nrecord(meta);
+  char filename[BUFSIZ] = {0};
+  FILE * fp = NULL;
+
+  io_subfile_name(&meta->subfile, stub, itime, filename, BUFSIZ);
+
+  fp = util_fopen(filename, "r+b");
+  if (fp == NULL) printf("fopen(%s) failed\n", filename);
+
+  for (int ic = 1; ic <= meta->subfile.sizes[X]; ic++) {
+    for (int jc = 1; jc <= meta->subfile.sizes[Y]; jc++) {
+      for (int kc = 1; kc <= meta->subfile.sizes[Z]; kc++) {
+
+	int icd = meta->subfile.offset[X] + ic;
+	int jcd = meta->subfile.offset[Y] + jc;
+	int kcd = meta->subfile.offset[Z] + kc;
+	int indexd = site_index(icd, jcd, kcd, meta->cs->param->ntotal);
+
+	for (int nr = 0; nr < nrecord; nr++) {
+	  /* Place at correct offset in the full array */
+	  if (meta->options.iorformat == IO_RECORD_BINARY) {
+	    double datum = 0.0;
+	    int nread = fread(&datum, sizeof(double), 1, fp);
+	    if (nread == 1) *(datatotal + nrecord*indexd + nr) = datum;
+	  }
+	  else {
+	    double datum = 0.0;
+	    int nread = fscanf(fp, "%le", &datum);
+	    if (nread == 1) *(datatotal + nrecord*indexd + nr) = datum;
+	  }
+
+	}
+
+      }
+    }
+  }
+
+  fclose(fp);
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  extract_unroll
+ *
+ *****************************************************************************/
+
+int le_block_id(int nplanes, int nx, int ic) {
+
+  /* Could take local ic and and offset here */
+  /* Halo points should be in the outer most block (always) */
+
+  assert(nplanes >= 0);
+  assert(nx > 0);
+  assert(1 <= ic && ic <= nx);
+
+  int bid = 0;
+
+  if (nplanes > 0) {
+    int s   = nx/nplanes;        /* Separation */ 
+    int ic0 = nx/2;              /* Ref. is centre */
+
+    if (nplanes % 2 == 0) {
+      /* blocks are ... -2 | -1 | 0 | +1 | +2 ... */
+      if (ic >  ic0) bid = (+s/2 + ic - ic0 - 1)/s;
+      if (ic <= ic0) bid = (-s/2 + ic - ic0    )/s;
+    }
+    else {
+      /* blocks are ... -2 | -1 | +1 | +2 ... (no "block zero") */
+      if (ic >  ic0) bid =  1 + (ic - ic0 - 1)/s;
+      if (ic <= ic0) bid = -1 + (ic - ic0    )/s;
+    }
+  }
+
+  return bid;
+}
+
+double le_block_displacement_uyt(const cs_t * cs, int ic, int itime) {
+
+  int nplanes = cs->leopts.nplanes;
+  double uyt = 0.0;
+
+  if (nplanes > 0) {
+    int nx = cs->param->ntotal[X];
+    double uy = cs->leopts.uy;
+
+    if (nplanes % 2 == 0) {
+      uyt = uy*itime*le_block_id(nplanes, nx, ic);
+    }
+    else {
+      int bid = le_block_id(nplanes, nx, ic);
+      if (bid <  0) uyt = uy*itime*(0.5 + bid);
+      if (bid >= 0) uyt = uy*itime*(bid - 0.5);
+    }
+  }
+
+  return uyt;
+}
+
+/* A function of time only for non-steady shear. */
+
+double le_block_uy(cs_t * cs, int ic, int itime) {
+
+  int nplanes = cs->leopts.nplanes;
+  int nx = cs->param->ntotal[X];
+  double uy = 0.0;
+
+  if (nplanes > 0) {
+    int bid = le_block_id(nplanes, nx, ic);
+    if (nplanes % 2 == 0) {
+     uy = cs->leopts.uy*bid;
+    }
+    else {
+      if (bid > 0) uy = cs->leopts.uy*(bid - 0.5);
+      if (bid < 0) uy = cs->leopts.uy*(bid + 0.5);
+    }
+  }
+
+  return uy;
+}
+
+/*****************************************************************************
+ *
+ *  extract_unroll
+ *
+ *  Unroll the time-dependent LE displacements.
+ *
+ *  If it's the velocity, there's a correction to u_y to account for
+ *  the relative block motion.
+ *
+ *****************************************************************************/
+
+int extract_unroll(const io_metadata_t * meta, double * data, int itime,
+		   int is_vel) {
+
+  int nrecord = io_metadata_nrecord(meta);
+  int ntotal[3] = {0};
+  double * buffer = NULL;
+  double du[BUFSIZ] = {0};
+
+  cs_ntotal(meta->cs, ntotal);
+
+  {
+    /* Temporary for y-z plane (all reocrds) */
+    int nsz = nrecord*ntotal[Y]*ntotal[Z];
+    buffer = (double *) malloc(nsz*sizeof(double));
+    if (buffer == NULL) printf("malloc(buffer) failed!\n");
+  }
+
+  for (int ic = 1; ic <= ntotal[X]; ic++) {
+
+    double dy = le_block_displacement_uyt(meta->cs, ic, itime);
+    int   jdy = floor(dy);
+    double fr = 1.0 - (dy - jdy);
+    if (is_vel) du[Y] = le_block_uy(meta->cs, ic, itime);
+    printf("time %6d ic %3d  uyt %7.3f dv %7.4f %3d\n" , itime, ic, dy,
+	   le_block_uy(meta->cs, ic, itime),
+	   le_block_id(meta->cs->leopts.nplanes, ntotal[X], ic));
+
+    for (int jc = 1; jc <= ntotal[Y]; jc++) {
+      int j0 = 1 + (jc - jdy - 3 + 1000*ntotal[Y]) % ntotal[Y];
+      int j1 = 1 + j0 % ntotal[Y];
+      int j2 = 1 + j1 % ntotal[Y];
+      int j3 = 1 + j2 % ntotal[Y];
+
+      for (int kc = 1; kc <= ntotal[Z]; kc++) {
+	for (int n = 0; n < nrecord; n++) {
+	  int index0 = site_index(ic, j0, kc, ntotal);
+	  int index1 = site_index(ic, j1, kc, ntotal);
+	  int index2 = site_index(ic, j2, kc, ntotal);
+	  int index3 = site_index(ic, j3, kc, ntotal);
+	  buffer[nrecord*site_index(1,jc,kc,ntotal) + n] =
+	    - (1.0/6.0)*fr*(fr-1.0)*(fr-2.0)*data[nrecord*index0 + n]
+	    + 0.5*(fr*fr-1.0)*(fr-2.0)*data[nrecord*index1 + n]
+	    - 0.5*fr*(fr+1.0)*(fr-2.0)*data[nrecord*index2 + n]
+	    + (1.0/6.0)*fr*(fr*fr-1.0)*data[nrecord*index3 + n];
+	}
+      }
+    }
+
+    /* Put the whole buffer plane back in place */
+
+    for (int jc = 1; jc <= ntotal[Y]; jc++) {
+      for (int kc = 1; kc <= ntotal[Z]; kc++) {
+	int index  = site_index(ic, jc, kc, ntotal);
+	int index1 = site_index(1,  jc, kc, ntotal);
+	for (int n = 0; n < nrecord; n++) {
+	  data[nrecord*index + n] = buffer[nrecord*index1 + n] + du[n];
+	}
+      }
+    }
+    /* Next ic */
+  }
+
+  free(buffer);
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  extract_process_and_output
+ *
+ *****************************************************************************/
+
+int extract_process_and_output(const char * stub, int ntime,
+			       io_metadata_t * meta) {
+
+  int nrecord = -1;                   /* Number of records per site (nf) */
+  double * datasection = NULL;        /* field data */
+  FILE * fp_output = NULL;            /* Output file */
+
+  assert(stub);
+  assert(0 <= ntime && ntime < 1000*1000*1000);
+
+  /* Records */
+
+  nrecord = io_metadata_nrecord(meta);
+  assert(nrecord > 0);
+
+  /* No. sites in the target section (always original at moment) */
+
+  cs_ntotal(meta->cs, ntargets);
+
+  {
+    size_t nr = nrecord;
+    size_t n = nr*ntargets[0]*ntargets[1]*ntargets[2];
+    datasection = (double *) calloc(n, sizeof(double));
+    if (datasection == NULL) printf("calloc(datasection) failed\n");
+  }
+
+  extract_read_single_file(meta, stub, ntime, datasection);
+
+  /* Unroll the data if Lees Edwards planes are present */
+
+  if (meta->cs->leopts.nplanes > 0) {
+    int is_vel = (strcmp(stub, "vel") == 0);
+    printf("Unrolling LE planes from centre (displacement %f)\n", -999.999);
+    if (is_vel) printf("Data is velocity field (nrecords = %d)\n", nrecord);
+    extract_unroll(meta, datasection, ntime, is_vel);
+  }
+
+  if (nrecord == 5 && strncmp(stub, "q", 1) == 0) {
+
+    if (output_vtk_ == 1 || output_vtk_ == 2) {
+      /* We mandate this is the transformed Q_ab */
+      lc_transform_q5(ntargets, datasection);
+      write_qab_vtk(ntime, ntargets, datasection);
+    }
+    else {
+      char io_data[BUFSIZ] = {0};
+      sprintf(io_data, "q-%9.9d", ntime);
+      fp_output = util_fopen(io_data, "w+b");
+      if (fp_output == NULL) {
+	printf("fopen(%s) failed\n", io_data);
+	exit(-1);
+      }
+
+      /* Here, we could respect the -d, -s, -x options. */
+      /* But at the moment, always 5 components ... */
+      if (output_q_raw_) {
+	printf("Writing raw q to %s\n", io_data);
+      }
+      else {
+	printf("Writing computed scalar q etc: %s\n", io_data);
+	lc_transform_q5(ntargets, datasection);
+      }
+
+      if (output_cmf_ == 0) write_data(fp_output, ntargets, 0, 5, datasection);
+      if (output_cmf_ == 1) write_data_cmf(fp_output, ntargets, 0, 5, datasection);
+
+      fclose(fp_output);
+    }
+  }
+  else {
+    /* A direct input / output */
+
+    /* Write a single file with the final section */
+    char io_data[BUFSIZ] = {0};
+    snprintf(io_data, sizeof(io_data), "%s-%9.9d", stub, ntime);
+
+    if (output_vtk_ == 1 || output_vtk_ == 2) {
+
+      strcat(io_data, ".vtk");
+      fp_output = util_fopen(io_data, "w+b");
+      if (fp_output == NULL) printf("fopen(%s) failed\n", io_data);
+      printf("\nWriting result to %s\n", io_data);
+
+      if (nrecord == 3 && strncmp(stub, "vel", 3) == 0) {
+	write_vtk_header(fp_output, nrecord, ntargets, "velocity_field",
+			 VTK_VECTORS);
+      }
+      else if (nrecord == 1 && strncmp(stub, "phi", 3) == 0) {
+	write_vtk_header(fp_output, nrecord, ntargets, "composition",
+			 VTK_SCALARS);
+      }
+      else {
+	/* Assume scalars */
+	write_vtk_header(fp_output, nrecord, ntargets, stub, VTK_SCALARS);
+      }
+
+    }
+    else {
+
+      fp_output = util_fopen(io_data, "w+b");
+      if (fp_output == NULL) printf("fopen(%s) failed\n", io_data);
+      printf("\nWriting result to %s\n", io_data);
+
+    }
+
+    if (output_cmf_ == 0) {
+      write_data(fp_output, ntargets, 0, nrecord, datasection);
+    }
+    if (output_cmf_ == 1) {
+      write_data_cmf(fp_output, ntargets, 0, nrecord, datasection);
+    }
+
+    fclose(fp_output);
+  }
+
+  free(datasection);
+
+  return 0;
 }

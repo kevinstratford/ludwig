@@ -3,18 +3,18 @@
  *  capillary.c
  *
  *  This utility produces an output file suitable for initialising
- *  a capillary structure in Ludwig. 
+ *  a capillary structure in Ludwig.
  *
  *  Some examples of uniform, and less uniform capillary initialisations.
- *  Options are selected at compile time (below) at the momoent.
+ *  Options are selected at compile time (below) at the moment.
  *
  *  The output should be capillary.dat      [for human consumption]
  *                       capillary.001-001  [for initial input to run]
  *
- *  (c) 2008-2021 The University of Edinburgh
- *
  *  Edinburgh Soft Matter and Statistcal Physics Group and
  *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2008-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -29,6 +29,7 @@
 #include "map_init.h"
 #include "symmetric.h"
 #include "fe_ternary.h"
+#include "util_fopen.h"
 
 /* SYSTEM SIZE */
 /* Set the system size as desired. Clearly, this must match the system
@@ -38,7 +39,7 @@ const int xmax = 20;
 const int ymax = 20;
 const int zmax = 20;
 
-const int crystalline_cell_size = 10; /* Must devide all lengths */
+const int crystalline_cell_size = 10; /* Must divide all lengths */
 
 /* CROSS SECTION */
 /* You can choose a square or circular cross section */
@@ -54,7 +55,7 @@ int obstacle_number = 1; /* number of obstacles per wall */
 int obstacle_length = 6; /* along the wall direction */
 int obstacle_height = 8; /* perpendicular from wall */
 int obstacle_depth  = 6; /* perpendicular to length and height */
-			 /* NOTE: obstacle_depth == xmax/ymax/zmax 
+			 /* NOTE: obstacle_depth == xmax/ymax/zmax
 				  means obstacles don't have a z-boundary */
 
 /* OUTPUT */
@@ -166,7 +167,12 @@ int main(int argc, char ** argv) {
 
   /* Now we know ndata, allocate a map structure... */
 
-  map_create(pe, cs, ndata, &map);
+  {
+    /* Use format IO_RECORD_ASCII or IO_RECORD_BINARY */
+    map_options_t opts = map_options_ndata(ndata);
+    opts.iodata.output.iorformat = IO_RECORD_ASCII;
+    map_create(pe, cs, &opts, &map);
+  }
 
   /* Structures */
 
@@ -225,8 +231,8 @@ int main(int argc, char ** argv) {
     map_init_status_wall(map, X);
 
     {
-      int nlocal[3] = {};
-      int noffset[3] = {};
+      int nlocal[3] = {0};
+      int noffset[3] = {0};
       cs_nlocal(cs, nlocal);
       cs_nlocal_offset(cs, noffset);
       if (noffset[X] == 0) {
@@ -272,13 +278,13 @@ int main(int argc, char ** argv) {
   capillary_write_ascii_serial(pe, cs, map);
 
   /* Standard file output */
-  {
-    int io_grid[3] = {1, 1, 1};
-    map_init_io_info(map, io_grid, IO_FORMAT_BINARY, IO_FORMAT_ASCII);
-    io_write_data(map->info, "capillary", map);
-  }
+  /* Metadata file, and output (taken to be time step zero) */
 
-  map_free(map);
+  io_metadata_write(&map->output, "map", NULL, NULL);
+  map_io_write(map, 0);
+
+
+  map_free(&map);
   cs_free(cs);
   pe_free(pe);
 
@@ -318,7 +324,7 @@ int map_special_cross(map_t * map) {
 
   const int w = 5;
   const int w_arm = 4;
-  int nlocal[3] = {};
+  int nlocal[3] = {0};
   int x0, x1, j0, j1;
 
   cs_t * cs = NULL;
@@ -398,7 +404,7 @@ int map_special_cross(map_t * map) {
 int map_xwall_obstacles(map_t * map, double sigma) {
 
   cs_t * cs = NULL;
-  int nlocal[3] = {};
+  int nlocal[3] = {0};
 
   int obst_start[2*obstacle_number][3];
   int obst_stop[2*obstacle_number][3];
@@ -536,7 +542,7 @@ int capillary_write_ascii_serial(pe_t * pe, cs_t * cs, map_t * map) {
 
   const char * filename = "capillary.dat";
 
-  int nlocal[3] = {};
+  int nlocal[3] = {0};
   FILE * fp = NULL;
 
   assert(pe);
@@ -545,7 +551,7 @@ int capillary_write_ascii_serial(pe_t * pe, cs_t * cs, map_t * map) {
 
   cs_nlocal(cs, nlocal);
 
-  fp = fopen(filename, "w");
+  fp = util_fopen(filename, "w");
   if (fp == NULL) return -1;
 
   /* Header comment */
@@ -563,8 +569,8 @@ int capillary_write_ascii_serial(pe_t * pe, cs_t * cs, map_t * map) {
 	map_data(map, index, data);
 
 	fprintf(fp, "%4d %4d %4d %3d", ic, jc, kc, status);
-	for (int nd = 0; nd < map->ndata; nd++) {
-	  fprintf(fp, " %22.15e", data[nd]);
+	for (int idata = 0; idata < map->ndata; idata++) {
+	  fprintf(fp, " %22.15e", data[idata]);
 	}
 	fprintf(fp, "\n");
       }

@@ -18,7 +18,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2011-2021 The University of Edinburgh
+ *  (c) 2011-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -30,11 +30,10 @@
 #include <math.h>
 
 #include "kernel.h"
-#include "field_s.h"
 #include "hydro.h"
-#include "pth_s.h"
 #include "timer.h"
 #include "phi_force.h"
+#include "phi_force_stress.h"
 #include "phi_force_colloid.h"
 #include "phi_grad_mu.h"
 #include "physics.h"
@@ -80,9 +79,10 @@ __host__ int phi_force_calculation(pe_t * pe, cs_t * cs, lees_edw_t * le,
   int is_pm;
   int nplanes = 0;
 
-  if (pth == NULL) return 0;
+  assert(pth);
+
   if (hydro == NULL) return 0; 
-  if (pth->method == PTH_METHOD_NO_FORCE) return 0;
+  if (pth->method == FE_FORCE_METHOD_NO_FORCE) return 0;
 
   wall_is_pm(wall, &is_pm);
 
@@ -97,7 +97,8 @@ __host__ int phi_force_calculation(pe_t * pe, cs_t * cs, lees_edw_t * le,
   }
   else {
     switch (pth->method) {
-    case PTH_METHOD_DIVERGENCE:
+    case FE_FORCE_METHOD_STRESS_DIVERGENCE:
+    case FE_FORCE_METHOD_RELAXATION_ANTI:
       pth_stress_compute(pth, fe);
       if (wall_present(wall) || is_pm) {
 	pth_force_fluid_wall_driver(pth, hydro, map, wall);
@@ -106,7 +107,7 @@ __host__ int phi_force_calculation(pe_t * pe, cs_t * cs, lees_edw_t * le,
 	pth_force_fluid_driver(pth, hydro);
       }
       break;
-    case PTH_METHOD_GRADMU:
+    case FE_FORCE_METHOD_PHI_GRADMU:
 
       if (wall_present(wall) || is_pm) {
 	phi_grad_mu_solid(cs, phi, fe, hydro, map);
@@ -118,7 +119,13 @@ __host__ int phi_force_calculation(pe_t * pe, cs_t * cs, lees_edw_t * le,
 	phi_grad_mu_external(cs, phi, hydro);
       }
       break;
-    case PTH_METHOD_STRESS_ONLY:
+    case FE_FORCE_METHOD_PHI_GRADMU_CORRECTION:
+      /* The "1" here indicates it's always a correction, but an option
+       * could be added to switch it off. */
+      phi_grad_mu_correction(cs, phi, fe, hydro, map, 1);
+      break;
+    case FE_FORCE_METHOD_RELAXATION_SYMM:
+      assert(0); /* NOT TESTED */
       pth_stress_compute(pth, fe);
       break;
     default:
@@ -247,7 +254,7 @@ __host__ int phi_force_external_chemical_potential(cs_t * cs, field_t * phi,
 
   {
     int is_gradmu = 0;
-    double gradmu[3] = {};
+    double gradmu[3] = {0};
     physics_t * phys = NULL;
 
     physics_ref(&phys);
@@ -443,19 +450,21 @@ static int phi_force_flux_divergence(cs_t * cs, hydro_t * hydro,
     for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
+	double force[3] = {0};
+
         index  = cs_index(cs, ic, jc, kc);
 	indexj = cs_index(cs, ic, jc-1, kc);
 	indexk = cs_index(cs, ic, jc, kc-1);
 
 	for (ia = 0; ia < 3; ia++) {
-	  hydro->f[addr_rank1(hydro->nsite, NHDIM, index, ia)]
-	    += -(+ fluxe[addr_rank1(nsf,3,index,ia)]
-		 - fluxw[addr_rank1(nsf,3,index,ia)]
-		 + fluxy[addr_rank1(nsf,3,index,ia)]
-		 - fluxy[addr_rank1(nsf,3,indexj,ia)]
-		 + fluxz[addr_rank1(nsf,3,index,ia)]
-		 - fluxz[addr_rank1(nsf,3,indexk,ia)]);
+	  force[ia] = -(+ fluxe[addr_rank1(nsf,3,index,ia)]
+			- fluxw[addr_rank1(nsf,3,index,ia)]
+			+ fluxy[addr_rank1(nsf,3,index,ia)]
+			- fluxy[addr_rank1(nsf,3,indexj,ia)]
+			+ fluxz[addr_rank1(nsf,3,index,ia)]
+			- fluxz[addr_rank1(nsf,3,indexk,ia)]);
 	}
+	hydro_f_local_add(hydro, index, force);
       }
     }
   }

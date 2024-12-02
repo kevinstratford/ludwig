@@ -11,7 +11,7 @@
 #  Edinburgh Soft Matter and Statistical Physics Group and
 #  Edinburgh Parallel Computing Centre
 #
-#  (c) 2016-2021 The University of Edinburgh
+#  (c) 2016-2023 The University of Edinburgh
 #
 #  Contributing authors:
 #  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -39,6 +39,7 @@ build:
 	$(MAKE) extract_colloids
 	$(MAKE) coll_squ_subgrid_init
 	$(MAKE) multi_poly_init
+	$(MAKE) polarizer
 
 colloid_init: colloid_init.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -61,16 +62,19 @@ coll_squ_subgrid_init: coll_squ_subgrid_init.o
 multi_poly_init: multi_poly_init.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
+polarizer: polarizer.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
 # Default rules
 
 .PHONY : clean
 clean:
 	rm -f *.o colloid_init extract_colloids capillary extract \
-	coll_squ_subgrid_init multi_poly_init
+	coll_squ_subgrid_init multi_poly_init polarizer
+	rm -f *gcda *gcno
 
 .SUFFIXES:
 .SUFFIXES: .c .o
 
 .c.o:
 	$(CC) $(CFLAGS) $(INCL) -c $*.c
-

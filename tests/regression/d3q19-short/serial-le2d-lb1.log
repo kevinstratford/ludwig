@@ -59,7 +59,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   2
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -73,16 +73,12 @@ Isothermal fluctuations:  off
 Shear relaxation time:    8.00000e-01
 Bulk relaxation time:     8.00000e-01
 Ghost relaxation time:    1.00000e+00
-[User   ] Random number seed: -7361237
+[User   ] Random number seed: 13
 
 Hydrodynamics
 -------------
 Hydrodynamics: on
 
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
 Initialising phi for spinodal
 Initialising shear profile
 Gradient calculation: 3d_27pt_fluid
@@ -91,6 +87,9 @@ Initial conditions.
 Scalars - total mean variance min max
 [rho]        4096.00  1.00000000000  0.0000000e+00  1.00000000000  1.00000000000
 [phi] -1.1802440e-02 -2.8814551e-06 8.2680383e-04 -4.9977721e-02 4.9988335e-02
+
+Free energy density - timestep total fluid
+[fed]              0 -2.0247427840e-05 -2.0247427840e-05
 
 Momentum - x y z
 [total   ]  3.1225023e-17  0.0000000e+00  0.0000000e+00

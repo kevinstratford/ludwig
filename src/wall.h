@@ -5,7 +5,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2011-2021 The University of Edinburgh
+ *  (c) 2011-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -19,7 +19,7 @@
 
 #include "pe.h"
 #include "coords.h"
-#include "model.h"
+#include "lb_data.h"
 #include "map.h"
 
 typedef enum wall_slip_enum {WALL_NO_SLIP = 0,
@@ -57,6 +57,7 @@ struct wall_param_s {
   double ubot[3];          /* 'Botttom' wall motion */
   double utop[3];          /* 'Top' wall motion */
   double lubr_rc[3];       /* Lubrication correction cut offs */
+  double lubr_dh[3];       /* Lubrication correction offset into fluid */
   wall_slip_t slip;        /* Slip parameters */
 };
 
@@ -64,7 +65,7 @@ struct wall_s {
   pe_t * pe;             /* Parallel environment */
   cs_t * cs;             /* Reference to coordinate system */
   map_t * map;           /* Reference to map structure */
-  lb_t * lb;             /* Reference to LB information */ 
+  lb_t * lb;             /* Reference to LB information */
   wall_t * target;       /* Device memory */
 
   wall_param_t * param;  /* parameters */
@@ -105,5 +106,8 @@ __host__ int wall_momentum_add(wall_t * wall, const double g[3]);
 __host__ __device__ int wall_is_pm(wall_t * wall, int * ispm);
 __host__ __device__ int wall_present(wall_t * wall);
 __host__ __device__ int wall_present_dim(wall_t * wall, int iswall[3]);
+
+/* A "class" method */
+__host__ double wall_lubr_drag(double eta, double ah, double h, double hlub);
 
 #endif

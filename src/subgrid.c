@@ -6,10 +6,47 @@
  *
  *  See Nash et al. (2007).
  *
- *  Edinburgh Soft Matter and Statistical Phyiscs Group and
+ *  Overview.
+ *
+ *  Two-way coupling between sub-grid particles and the fluid is implemented
+ *  in roughly two phases.
+ *
+ *  (1) Force on each particle from the immediately surrounding fluid.
+ *  (2) Influence of the particles on local fluid nodes;
+ *
+ *  (1) subgrid_update() is responsible for the particle update and setting
+ *      any position increment dr. Schematically:
+ *
+ *      -> subgrid_interpolation()
+ *         accumulates contributions to the force on the particle from
+ *         local fluid nodes to local particle copies (fsub[3]);
+ *      -> COLLOID_SUM_SUBGRID
+ *         ensures all copies agree on the net force per particle fsub[3].
+ *      -> all copies update v and dr = v.dt from fsub[3] and must agree.
+ *      -> Actual position updates must be deferred until the start of
+ *         the next time step and solloids_info_position_update().
+ *
+ *  (2) subgrid_force_from_particle() is responsible for computing
+ *      the force on local fluid nodes from particles. Schematically;
+ *
+ *      -> On entry, fex[3] may contain pair interaction and other
+ *         "external" forces on the particle;
+ *      -> subgrid_wall_lubrication()
+ *          detect and compute particle/wall lubrication forces,
+ *          and accumulate to fex[3] once per particle (i.e. local copies
+ *          only involved);
+ *      -> COLLOID_SUM_FORCE_EXT_ONLY
+ *         => all copies agree on fext[3], text[3]
+ *
+ *      -> All particle copies contribute \delta(r - R_i) fext[3] to local
+ *         fluid nodes only via hydro_f_local_add() at position r.
+ *      -> This force may then enter the fluid collision stage.
+ *
+ *
+ *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2021 The University of Edinburgh
+ *  (c) 2010-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -39,6 +76,8 @@ static const double drange_ = 1.0; /* Max. range of interpolation - 1 */
  *  For each particle, accumulate the force on the relevant surrounding
  *  lattice nodes. Only nodes in the local domain are involved.
  *
+ *  If there are no subgrid particles, hydro is allowed to be NULL.
+ *
  *****************************************************************************/
 
 
@@ -57,7 +96,6 @@ int subgrid_force_from_particles(colloids_info_t * cinfo, hydro_t * hydro,
   colloid_t * presolved = NULL;  /* Resolved colloid occupuing node */
 
   assert(cinfo);
-  assert(hydro);
   assert(wall);
 
   if (cinfo->nsubgrid == 0) return 0;
@@ -75,6 +113,7 @@ int subgrid_force_from_particles(colloids_info_t * cinfo, hydro_t * hydro,
   /* While there is no device implementation, must copy back-and forth
    * the force. */
 
+  assert(hydro);
   hydro_memcpy(hydro, tdpMemcpyDeviceToHost);
 
   /* Loop through all cells (including the halo cells) */
@@ -87,7 +126,7 @@ int subgrid_force_from_particles(colloids_info_t * cinfo, hydro_t * hydro,
 
 	for ( ; p_colloid; p_colloid = p_colloid->next) {
 
-          if (p_colloid->s.type != COLLOID_TYPE_SUBGRID) continue;
+	  if (p_colloid->s.bc != COLLOID_BC_SUBGRID) continue;
 
 	  /* Need to translate the colloid position to "local"
 	   * coordinates, so that the correct range of lattice
@@ -121,7 +160,7 @@ int subgrid_force_from_particles(colloids_info_t * cinfo, hydro_t * hydro,
 		r[Z] = r0[Z] - 1.0*k;
 
 		dr = d_peskin(r[X])*d_peskin(r[Y])*d_peskin(r[Z]);
-            
+
 		force[X] = p_colloid->fex[X]*dr;
 		force[Y] = p_colloid->fex[Y]*dr;
 		force[Z] = p_colloid->fex[Z]*dr;
@@ -132,8 +171,8 @@ int subgrid_force_from_particles(colloids_info_t * cinfo, hydro_t * hydro,
 		  hydro_f_local_add(hydro, index, force);
 		}
 		else {
-		  double rd[3] = {};
-		  double torque[3] = {};
+		  double rd[3] = {0};
+		  double torque[3] = {0};
 		  presolved->force[X] += force[X];
 		  presolved->force[Y] += force[Y];
 		  presolved->force[Z] += force[Z];
@@ -213,7 +252,7 @@ int subgrid_update(colloids_info_t * cinfo, hydro_t * hydro, int noise_flag) {
 
 	for ( ; p_colloid; p_colloid = p_colloid->next) {
 
-          if (p_colloid->s.type != COLLOID_TYPE_SUBGRID) continue;
+	  if (p_colloid->s.bc != COLLOID_BC_SUBGRID) continue;
 
 	  drag = reta*(1.0/p_colloid->s.ah - 1.0/p_colloid->s.al);
 
@@ -297,7 +336,7 @@ static int subgrid_interpolation(colloids_info_t * cinfo, hydro_t * hydro) {
 
 	for ( ; p_colloid; p_colloid = p_colloid->next) {
 
-          if (p_colloid->s.type != COLLOID_TYPE_SUBGRID) continue;
+	  if (p_colloid->s.bc != COLLOID_BC_SUBGRID) continue;
 
 	  p_colloid->fsub[X] = 0.0;
 	  p_colloid->fsub[Y] = 0.0;
@@ -317,7 +356,7 @@ static int subgrid_interpolation(colloids_info_t * cinfo, hydro_t * hydro) {
 
 	for ( ; p_colloid; p_colloid = p_colloid->next) {
 
-          if (p_colloid->s.type != COLLOID_TYPE_SUBGRID) continue;
+	  if (p_colloid->s.bc != COLLOID_BC_SUBGRID) continue;
 
 	  /* Need to translate the colloid position to "local"
 	   * coordinates, so that the correct range of lattice
@@ -385,14 +424,14 @@ int subgrid_wall_lubrication(colloids_info_t * cinfo, wall_t * wall) {
   colloid_t * pc = NULL;
 
   double f[3] = {0.0, 0.0, 0.0};
-  
+
   assert(cinfo);
   assert(wall);
 
   colloids_info_local_head(cinfo, &pc);
 
   for ( ; pc; pc = pc->nextlocal) {
-    if (pc->s.type != COLLOID_TYPE_SUBGRID) continue;
+    if (pc->s.bc != COLLOID_BC_SUBGRID) continue;
     wall_lubr_sphere(wall, pc->s.ah, pc->s.r, drag);
     pc->fex[X] += drag[X]*pc->s.v[X];
     pc->fex[Y] += drag[Y]*pc->s.v[Y];

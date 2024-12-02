@@ -1,6 +1,0 @@
-language: c
-script:
-  - cp config/travis-gcc.mk ./config.mk
-  - make serial
-  - make
-  - make test

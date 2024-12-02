@@ -10,7 +10,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2017 The University of Edinburgh
+ *  (c) 2010-2023 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -102,6 +102,7 @@ int test_ewald_suite(void) {
   assert(p_c1 != NULL);
   assert(p_c2 != NULL);
   colloids_info_ntotal_set(cinfo);
+  colloids_info_list_local_build(cinfo);
 
   /* First colloid .... */
 
@@ -111,6 +112,7 @@ int test_ewald_suite(void) {
   p_c1->s.s[X] = 0.0;
   p_c1->s.s[Y] = 0.0;
   p_c1->s.s[Z] = 1.0;
+  p_c1->s.magnetic = 1;
 
   /* Second colloid ... */
 
@@ -120,6 +122,7 @@ int test_ewald_suite(void) {
   p_c2->s.s[X] = 0.0;
   p_c2->s.s[Y] = 0.0;
   p_c2->s.s[Z] = -1.0;
+  p_c2->s.magnetic = 1;
   cs_minimum_distance(cs, r1, r2, r12);
 
 
@@ -196,7 +199,7 @@ int test_ewald_suite(void) {
   p_c2->force[X] = 0.0; p_c2->force[Y] = 0.0; p_c2->force[Z] = 0.0;
 
   /* Energy */
-  
+
   ewald_real_space_energy(ewald, p_c1->s.s, p_c2->s.s, r12, &e);
   test_assert(fabs(e - 0.0) < TOLERANCE);
 

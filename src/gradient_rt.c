@@ -8,6 +8,7 @@
  *  Edinburgh Parallel Computing Centre
  *
  *  (c) 2010-2019 The University of Edinburgh
+ *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -87,7 +88,6 @@ int gradient_rt_init(pe_t * pe, rt_t * rt, const char * fieldname,
       pe_info(pe, "3d_7pt_solid\n");
       f2 = grad_3d_7pt_solid_d2;
       f4 = NULL;
-      field_grad_dab_set(grad, grad_3d_7pt_solid_dab);
       assert(map);
       grad_3d_7pt_solid_set(map, cinfo);
     }
@@ -118,6 +118,13 @@ int gradient_rt_init(pe_t * pe, rt_t * rt, const char * fieldname,
       f4 = NULL;
       assert(map);
       grad_3d_ternary_solid_map_set(map);
+    }
+    else if (strcmp(keyvalue, "s7_anchoring") == 0) {
+      pe_info(pe, "s7_anchoring\n");
+      f2 = grad_s7_anchoring_d2;
+      f4 = NULL;
+      grad_s7_anchoring_map_set(map);
+      grad_s7_anchoring_cinfo_set(cinfo);
     }
     else {
       /* Not recognised */

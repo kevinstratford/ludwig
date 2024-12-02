@@ -19,7 +19,6 @@ N_start 0
 
 size 64_64_1
 grid 1_1_1
-reduced_halo no
 
 ##############################################################################
 #
@@ -41,7 +40,7 @@ temperature 0.00002133333
 free_energy lc_blue_phase
 
 fd_advection_scheme_order 1
-fd_gradient_calculation 3d_7pt_fluid
+fd_gradient_calculation 2d_5pt_fluid
 
 lc_a0      1.0
 lc_gamma   3.0
@@ -59,8 +58,6 @@ lc_active_zeta1 0.05
 lc_q_initialisation active_nematic_q2d_y
 lc_q_init_amplitude 0.333333333333333
 lc_init_redshift 1.0
-
-lc_anchoring_method none
 
 ###############################################################################
 #

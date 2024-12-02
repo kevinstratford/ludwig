@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2011-2021 The University of Edinburgh
+ *  (c) 2011-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -25,6 +25,7 @@
 
 int test_rt_general(pe_t * pe);
 int test_rt_nvector(pe_t * pe);
+int test_rt_key_present(pe_t * pe);
 
 /*****************************************************************************
  *
@@ -40,6 +41,7 @@ int test_rt_suite(void) {
 
   test_rt_general(pe);
   test_rt_nvector(pe);
+  test_rt_key_present(pe);
 
   pe_info(pe, "PASS     ./unit/test_runtime\n");
   pe_free(pe);
@@ -242,7 +244,7 @@ int test_rt_nvector(pe_t * pe) {
   rt_add_key_value(rt, "bad_val", "1_x");
 
   {
-    int i2[2] = {};
+    int i2[2] = {0};
     key_ret = rt_int_nvector(rt, "ki2", 2, i2, RT_NONE);
     assert(key_ret == 0);
     assert(i2[0] == 1);
@@ -250,13 +252,13 @@ int test_rt_nvector(pe_t * pe) {
   }
 
   {
-    int i3[3] = {};
+    int i3[3] = {0};
     key_ret = rt_int_nvector(rt, "ki2", 3, i3, RT_NONE); /* Wrong length */
     assert(key_ret != 0);
   }
 
   {
-    double v4[4] = {};
+    double v4[4] = {0};
     key_ret = rt_double_nvector(rt, "kd4", 4, v4, RT_NONE);
     assert(key_ret == 0);
     assert(fabs(v4[0] - 1.0) < DBL_EPSILON);
@@ -266,7 +268,7 @@ int test_rt_nvector(pe_t * pe) {
   }
 
   {
-    int i2[2] = {};
+    int i2[2] = {0};
 
     key_ret = rt_int_nvector(rt, "bad_val", 2, i2, RT_NONE); /* bad value */
     assert(key_ret != 0);
@@ -275,4 +277,29 @@ int test_rt_nvector(pe_t * pe) {
   rt_free(rt);
 
   return key_ret;
+}
+
+/*****************************************************************************
+ *
+ *  test_rt_key_present
+ *
+ *****************************************************************************/
+
+int test_rt_key_present(pe_t * pe) {
+
+  int ifail = 0;
+  rt_t * rt = NULL;
+
+  rt_create(pe, &rt);
+  rt_add_key_value(rt, "present", "and_correct");
+
+  ifail = rt_key_present(rt, "present");
+  assert(ifail == 1);
+
+  ifail = rt_key_present(rt, "no_present");
+  assert(ifail == 0);
+
+  rt_free(rt);
+
+  return ifail;
 }

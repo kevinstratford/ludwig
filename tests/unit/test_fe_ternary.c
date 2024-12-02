@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Phsyics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2019 The University of Edinburgh
+ *  (c) 2019-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -57,11 +57,12 @@ __host__ int test_fe_ternary_suite(void) {
   }
   else {
 
+    field_options_t opts = field_options_ndata_nhalo(nf2, nhalo);
+
     cs_create(pe, &cs);
     cs_init(cs);
 
-    field_create(pe, cs, nf2, "ternary", &phi);
-    field_init(phi, nhalo, NULL);
+    field_create(pe, cs, NULL, "ternary", &opts, &phi);
 
     test_fe_ternary_create(pe, cs, phi);
     test_fe_ternary_fed(pe, cs, phi);
@@ -126,7 +127,7 @@ __host__ int test_fe_ternary_fed(pe_t * pe, cs_t * cs, field_t * phi) {
 
   int index = 1;
   double phi0[2] = {-0.3, 0.7};
-  double grad[2][3] = {{0.1, -0.2, 0.3}, {-0.4, 0.5, -0.7}};
+  const double grad[2][3] = {{0.1, -0.2, 0.3}, {-0.4, 0.5, -0.7}};
   double fed;
 
   assert(pe);
@@ -168,7 +169,7 @@ __host__ int test_fe_ternary_mu(pe_t * pe, cs_t * cs, field_t * phi) {
 
   int index = 1;
   double phi0[2] = {-0.3, 0.7};
-  double d2phi[2] = {0.1, 0.4};
+  const double d2phi[2] = {0.1, 0.4};
   double mu[3];
 
   assert(pe);
@@ -215,7 +216,7 @@ __host__ int test_fe_ternary_str(pe_t * pe, cs_t * cs, field_t * phi) {
   int index = 1;
   double phi0[2] = {-0.3, 0.7};
   double d2phi[2] = {0.1, 0.4};
-  double grad[2][3] = {{0.1, -0.2, 0.3}, {-0.4, 0.5, -0.7}};
+  const double grad[2][3] = {{0.1, -0.2, 0.3}, {-0.4, 0.5, -0.7}};
   double s[3][3];
 
   assert(pe);
@@ -230,45 +231,47 @@ __host__ int test_fe_ternary_str(pe_t * pe, cs_t * cs, field_t * phi) {
   field_scalar_array_set(phi, index, phi0);
   fe_ternary_str(fe, index, s);
 
-  test_assert(fabs(s[0][0] - 5.2552500e-01) < DBL_EPSILON);
-  test_assert(fabs(s[0][1] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[0][2] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[1][0] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[1][1] - 5.2552500e-01) < DBL_EPSILON);
-  test_assert(fabs(s[1][2] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[2][0] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[2][1] - 0.0000000e+00) < DBL_EPSILON);
-  test_assert(fabs(s[2][2] - 5.2552500e-01) < DBL_EPSILON);
+  /* DBL_EPSILON is just too tight for some platform/compiler combinations */
+
+  test_assert(fabs(s[0][0] - 5.2552500e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][1] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][2] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][0] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][1] - 5.2552500e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][2] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][0] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][1] - 0.0000000e+00) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][2] - 5.2552500e-01) < 2.0*DBL_EPSILON);
 
   /* With grad */
 
   field_grad_pair_grad_set(dphi, index, grad);
   fe_ternary_str(fe, index, s);
 
-  test_assert(fabs(s[0][0] -  4.4077500e-01) < DBL_EPSILON);
-  test_assert(fabs(s[0][1] - -5.7062500e-02) < DBL_EPSILON);
-  test_assert(fabs(s[0][2] -  8.0000000e-02) < DBL_EPSILON);
-  test_assert(fabs(s[1][0] - -5.7062500e-02) < DBL_EPSILON);
-  test_assert(fabs(s[1][1] -  4.6777500e-01) < DBL_EPSILON);
-  test_assert(fabs(s[1][2] - -1.0150000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[2][0] -  8.0000000e-02) < DBL_EPSILON);
-  test_assert(fabs(s[2][1] - -1.0150000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[2][2] -  5.3796250e-01) < DBL_EPSILON);
+  test_assert(fabs(s[0][0] -  4.4077500e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][1] - -5.7062500e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][2] -  8.0000000e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][0] - -5.7062500e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][1] -  4.6777500e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][2] - -1.0150000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][0] -  8.0000000e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][1] - -1.0150000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][2] -  5.3796250e-01) < 2.0*DBL_EPSILON);
 
   /* With delsq */
 
   field_grad_pair_delsq_set(dphi, index, d2phi);
   fe_ternary_str(fe, index, s);
 
-  test_assert(fabs(s[0][0] -  3.9790000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[0][1] - -5.7062500e-02) < DBL_EPSILON);
-  test_assert(fabs(s[0][2] -  8.0000000e-02) < DBL_EPSILON);
-  test_assert(fabs(s[1][0] - -5.7062500e-02) < DBL_EPSILON);
-  test_assert(fabs(s[1][1] -  4.2490000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[1][2] - -1.0150000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[2][0] -  8.0000000e-02) < DBL_EPSILON);
-  test_assert(fabs(s[2][1] - -1.0150000e-01) < DBL_EPSILON);
-  test_assert(fabs(s[2][2] -  4.9508750e-01) < DBL_EPSILON);
+  test_assert(fabs(s[0][0] -  3.9790000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][1] - -5.7062500e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[0][2] -  8.0000000e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][0] - -5.7062500e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][1] -  4.2490000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[1][2] - -1.0150000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][0] -  8.0000000e-02) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][1] - -1.0150000e-01) < 2.0*DBL_EPSILON);
+  test_assert(fabs(s[2][2] -  4.9508750e-01) < 2.0*DBL_EPSILON);
 
   fe_ternary_free(fe);
   field_grad_free(dphi);

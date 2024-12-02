@@ -2,12 +2,15 @@
  *
  *  test_model.c
  *
- *  Unit test for the currently compiled model (D3Q15 or D3Q19).
+ *  Tests for model data: distributions, halos, i/o (pending!).
+ *  PENDING: This is to be merged with test_halo.c under "test_lb_data.c".
+ *  PENDING: Coverage check.
+ *
  *
  *  Edinburgh Soft Matter and Statistical Physics Group
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2021 The University of Edinburgh
+ *  (c) 2010-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -18,32 +21,27 @@
 #include <float.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "pe.h"
 #include "coords.h"
 #include "util.h"
-#include "cs_limits.h"
-#include "lb_model_s.h"
+#include "lb_data.h"
 #include "tests.h"
 
-static void test_model_constants(void);
 static void test_model_velocity_set(void);
 
 int do_test_model_distributions(pe_t * pe, cs_t * cs);
 int do_test_model_halo_swap(pe_t * pe, cs_t * cs);
 int do_test_model_reduced_halo_swap(pe_t * pe, cs_t * cs);
 int do_test_lb_model_io(pe_t * pe, cs_t * cs);
+
+int test_lb_data_write(pe_t * pe, cs_t * cs);
+int test_lb_write_buf(pe_t * pe, cs_t * cs, const lb_data_options_t * opts);
+int test_lb_write_buf_ascii(pe_t * pe, cs_t * cs, const lb_data_options_t * opts);
+int test_lb_io_aggr_pack(pe_t * pe, cs_t * cs, const lb_data_options_t * opts);
+
 static  int test_model_is_domain(cs_t * cs, int ic, int jc, int kc);
-
-
-
-
-
-typedef struct lb_data_options_s {
-  int ndim;
-  int nvel;
-  int ndist;
-} lb_data_options_t;
 
 
 /* Utility to return a unique value for global (ic,jc,kc,p) */
@@ -55,19 +53,22 @@ typedef struct lb_data_options_s {
 
 #include <stdint.h>
 
-int64_t lb_data_index(lb_t * lb, int ic, int jc, int kc, int p) {
+int64_t lb_data_index(lb_t * lb, int ic, int jc, int kc, int n, int p) {
 
   int64_t index = INT64_MIN;
-  int64_t nall[3] = {};
-  int64_t nstr[3] = {};
+  int64_t nall[3] = {0};
+  int64_t nstr[3] = {0};
   int64_t pstr    = 0;
+  int64_t dstr    = 0;
 
-  int ntotal[3] = {};
-  int offset[3] = {};
+  int ntotal[3] = {0};
+  int offset[3] = {0};
   int nhalo = 0;
 
   assert(lb);
   assert(0 <= p && p < lb->model.nvel);
+  assert(lb->ndist == 1 || lb->ndist == 2);
+  assert(0 <= n && n < lb->ndist);
 
   cs_ntotal(lb->cs, ntotal);
   cs_nlocal_offset(lb->cs, offset);
@@ -80,6 +81,7 @@ int64_t lb_data_index(lb_t * lb, int ic, int jc, int kc, int p) {
   nstr[Y] = nstr[Z]*nall[Z];
   nstr[X] = nstr[Y]*nall[Y];
   pstr    = nstr[X]*nall[X];
+  dstr    = pstr*lb->model.nvel;
 
   {
     int igl = offset[X] + ic;
@@ -98,457 +100,10 @@ int64_t lb_data_index(lb_t * lb, int ic, int jc, int kc, int p) {
     assert(1 <= jgl && jgl <= ntotal[Y]);
     assert(1 <= kgl && kgl <= ntotal[Z]);
 
-    index = pstr*p + nstr[X]*igl + nstr[Y]*jgl + nstr[Z]*kgl;
+    index = dstr*n + pstr*p + nstr[X]*igl + nstr[Y]*jgl + nstr[Z]*kgl;
   }
 
   return index;
-}
-
-int lb_data_create(pe_t * pe, cs_t * cs, const lb_data_options_t * options,
-		   lb_t ** lb);
-
-int lb_data_create(pe_t * pe, cs_t * cs, const lb_data_options_t * options,
-		   lb_t ** lb) {
-
-  lb_t * obj = NULL;
-
-  assert(pe);
-  assert(cs);
-  assert(options);
-  assert(lb);
-
-  obj = (lb_t *) calloc(1, sizeof(lb_t));
-  assert(obj);
-  if (obj == NULL) pe_fatal(pe, "calloc(1, lb_t) failed\n");
-
-  /* Check options */
-
-  obj->pe = pe;
-  obj->cs = cs;
-  obj->ndim = options->ndim;
-  obj->nvel = options->nvel;
-  obj->ndist = options->ndist;
-
-  lb_model_create(obj->nvel, &obj->model);
-
-  /* Storage */
-
-  {
-    /* Allocate storage following cs specification */
-    int nhalo = 1;
-    int nlocal[3] = {};
-    cs_nhalo(cs, &nhalo);
-    cs_nlocal(cs, nlocal);
-
-    {
-      int nx = nlocal[X] + 2*nhalo;
-      int ny = nlocal[Y] + 2*nhalo;
-      int nz = nlocal[Z] + 2*nhalo;
-      obj->nsite = nx*ny*nz;
-    }
-    {
-      size_t sz = sizeof(double)*obj->nsite*obj->nvel;
-      assert(sz > 0); /* Should not overflow in size_t I hope! */
-      obj->f = (double *) mem_aligned_malloc(MEM_PAGESIZE, sz);
-      assert(obj->f);
-      if (obj->f == NULL) pe_fatal(pe, "malloc(lb->f) failed\n");
-    }
-  }
-  
-  *lb = obj;
-
-  return 0;
-}
-
-int lb_data_free(lb_t * lb) {
-
-  assert(lb);
-
-  free(lb->f);
-  lb_model_free(&lb->model);
-  free(lb);
-
-  return 0;
-}
-
-/* We will not exceed 27 directions! Direction index 0, in keeping
- * with the LB model definition, is (0,0,0) - so no communication. */
-
-typedef struct lb_halo_s {
-
-  MPI_Comm comm;                  /* coords: Cartesian communicator */
-  int nbrrank[3][3][3];           /* coords: neighbour rank look-up */
-  int nlocal[3];                  /* coords: local domain size */
-
-  lb_model_t map;                 /* Communication map 2d or 3d */
-  int tagbase;                    /* send/recv tag */
-  int full;                       /* All velocities at each site required. */
-  int count[27];                  /* halo: item data count per direction */
-  cs_limits_t slim[27];           /* halo: send data region (rectangular) */
-  cs_limits_t rlim[27];           /* halo: recv data region (rectangular) */
-  double * send[27];              /* halo: send buffer per direction */
-  double * recv[27];              /* halo: recv buffer per direction */
-  MPI_Request request[2*27];      /* halo: array of requests */
-
-} lb_halo_t;
-
-/*****************************************************************************
- *
- *  lb_halo_size
- *
- *  Utility to compute a number of sites from cs_limits_t.
- *
- *****************************************************************************/
-
-int cs_limits_size(cs_limits_t lim) {
-
-  int szx = 1 + lim.imax - lim.imin;
-  int szy = 1 + lim.jmax - lim.jmin;
-  int szz = 1 + lim.kmax - lim.kmin;
-
-  return szx*szy*szz;
-}
-
-/*****************************************************************************
- *
- *  lb_halo_enqueue_send
- *
- *  Pack the send buffer. The ireq determines the direction of the
- *  communication.
- *
- *****************************************************************************/
-
-int lb_halo_enqueue_send(const lb_t * lb, const lb_halo_t * h, int ireq) {
-
-  assert(1 <= ireq && ireq < h->map.nvel);
-  assert(lb->ndist == 1);
-
-  if (h->count[ireq] > 0) {
-
-    int8_t mx = h->map.cv[ireq][X];
-    int8_t my = h->map.cv[ireq][Y];
-    int8_t mz = h->map.cv[ireq][Z];
-    int8_t mm = mx*mx + my*my + mz*mz;
-
-    int ib = 0; /* Buffer index */
-
-    assert(mm == 1 || mm == 2 || mm == 3);
-
-    for (int ic = h->slim[ireq].imin; ic <= h->slim[ireq].imax; ic++) {
-      for (int jc = h->slim[ireq].jmin; jc <= h->slim[ireq].jmax; jc++) {
-        for (int kc = h->slim[ireq].kmin; kc <= h->slim[ireq].kmax; kc++) {
-	  /* If full, we need p = 0 */
-          for (int p = 0; p < lb->nvel; p++) {
-	    int8_t px = lb->model.cv[p][X];
-	    int8_t py = lb->model.cv[p][Y];
-	    int8_t pz = lb->model.cv[p][Z];
-            int dot = mx*px + my*py + mz*pz;
-            if (h->full || dot == mm) {
-	      int index = cs_index(lb->cs, ic, jc, kc);
-	      int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, 0, p);
-	      h->send[ireq][ib++] = lb->f[laddr];
-	    }
-          }
-        }
-      }
-    }
-    assert(ib == h->count[ireq]*cs_limits_size(h->slim[ireq]));
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  lb_halo_dequeue_recv
- *
- *  Unpack the recv buffer into place in the distributions.
- *
- *****************************************************************************/
-
-int lb_halo_dequeue_recv(lb_t * lb, const lb_halo_t * h, int ireq) {
-
-  assert(lb);
-  assert(h);
-  assert(0 < ireq && ireq < h->map.nvel);
-  assert(lb->ndist == 1);
-
-  if (h->count[ireq] > 0) {
-
-    /* The communication direction is reversed cf. the send... */
-    int8_t mx = h->map.cv[h->map.nvel-ireq][X];
-    int8_t my = h->map.cv[h->map.nvel-ireq][Y];
-    int8_t mz = h->map.cv[h->map.nvel-ireq][Z];
-    int8_t mm = mx*mx + my*my + mz*mz;
-
-    int ib = 0; /* Buffer index */
-    double * recv = h->recv[ireq];
-
-    {
-      int i = 1 + mx;
-      int j = 1 + my;
-      int k = 1 + mz;
-      /* If Cartesian neighbour is self, just copy out of send buffer. */
-      if (h->nbrrank[i][j][k] == h->nbrrank[1][1][1]) recv = h->send[ireq]; 
-    }
-
-    assert(mm == 1 || mm == 2 || mm == 3);
-
-    for (int ic = h->rlim[ireq].imin; ic <= h->rlim[ireq].imax; ic++) {
-      for (int jc = h->rlim[ireq].jmin; jc <= h->rlim[ireq].jmax; jc++) {
-        for (int kc = h->rlim[ireq].kmin; kc <= h->rlim[ireq].kmax; kc++) {
-          for (int p = 0; p < lb->nvel; p++) {
-	    /* For reduced swap, we must have -cv[p] here... */
-	    int8_t px = lb->model.cv[lb->nvel-p][X];
-	    int8_t py = lb->model.cv[lb->nvel-p][Y];
-	    int8_t pz = lb->model.cv[lb->nvel-p][Z];
-            int dot = mx*px + my*py + mz*pz;
-            if (h->full || dot == mm) {
-	      int index = cs_index(lb->cs, ic, jc, kc);
-              int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, 0, p);
-	      lb->f[laddr] = recv[ib++];
-	    }
-          }
-        }
-      }
-    }
-    assert(ib == h->count[ireq]*cs_limits_size(h->rlim[ireq]));
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  lb_halo_create
- *
- *  Currently: generate all send and receive requests.
- *
- *****************************************************************************/
-
-int lb_halo_create(const lb_t * lb, lb_halo_t * h, int full) {
-
-  lb_halo_t hnull = {};
-
-  assert(lb);
-  assert(h);
-
-  *h = hnull;
-
-  /* Communication model */
-  if (lb->model.ndim == 2) lb_model_create( 9, &h->map);
-  if (lb->model.ndim == 3) lb_model_create(27, &h->map);
-
-  assert(h->map.ndim == lb->model.ndim);
-
-  cs_nlocal(lb->cs, h->nlocal);
-  cs_cart_comm(lb->cs, &h->comm);
-  h->tagbase = 211216;
-  h->full = full;
-
-  /* Determine look-up table of ranks of neighbouring processes */
-  {
-    int dims[3] = {};
-    int periods[3] = {};
-    int coords[3] = {};
-
-    MPI_Cart_get(h->comm, h->map.ndim, dims, periods, coords);
-
-    for (int p = 0; p < h->map.nvel; p++) {
-      int nbr[3] = {};
-      int out[3] = {};  /* Out-of-range is erroneous for non-perioidic dims */
-      int i = 1 + h->map.cv[p][X];
-      int j = 1 + h->map.cv[p][Y];
-      int k = 1 + h->map.cv[p][Z];
-
-      nbr[X] = coords[X] + h->map.cv[p][X];
-      nbr[Y] = coords[Y] + h->map.cv[p][Y];
-      nbr[Z] = coords[Z] + h->map.cv[p][Z];
-      out[X] = (!periods[X] && (nbr[X] < 0 || nbr[X] > dims[X]));
-      out[Y] = (!periods[Y] && (nbr[Y] < 0 || nbr[Y] > dims[Y]));
-      out[Z] = (!periods[Z] && (nbr[Z] < 0 || nbr[Z] > dims[Z]));
-
-      if (out[X] || out[Y] || out[Z]) {
-	h->nbrrank[i][j][k] = MPI_PROC_NULL;
-      }
-      else {
-	MPI_Cart_rank(h->comm, nbr, &h->nbrrank[i][j][k]);
-      }
-    }
-    /* I must be in the middle */
-    assert(h->nbrrank[1][1][1] == cs_cart_rank(lb->cs));
-  }
-
-
-  /* Limits of the halo regions in each communication direction */
-
-  for (int p = 1; p < h->map.nvel; p++) {
-
-    /* Limits for send and recv regions*/
-    int8_t cx = h->map.cv[p][X];
-    int8_t cy = h->map.cv[p][Y];
-    int8_t cz = h->map.cv[p][Z];
-
-    cs_limits_t send = {1, h->nlocal[X], 1, h->nlocal[Y], 1, h->nlocal[Z]};
-    cs_limits_t recv = {1, h->nlocal[X], 1, h->nlocal[Y], 1, h->nlocal[Z]};
-
-    if (cx == -1) send.imax = 1;
-    if (cx == +1) send.imin = send.imax;
-    if (cy == -1) send.jmax = 1;
-    if (cy == +1) send.jmin = send.jmax;
-    if (cz == -1) send.kmax = 1;
-    if (cz == +1) send.kmin = send.kmax;
-
-    /* velocity is reversed... */
-    if (cx == +1) recv.imax = recv.imin = 0;
-    if (cx == -1) recv.imin = recv.imax = recv.imax + 1;
-    if (cy == +1) recv.jmax = recv.jmin = 0;
-    if (cy == -1) recv.jmin = recv.jmax = recv.jmax + 1;
-    if (cz == +1) recv.kmax = recv.kmin = 0;
-    if (cz == -1) recv.kmin = recv.kmax = recv.kmax + 1;
-
-    h->slim[p] = send;
-    h->rlim[p] = recv;
-  }
-
-  /* Message count (velocities) for each communication direction */
-
-  for (int p = 1; p < h->map.nvel; p++) {
-
-    int count = 0;
-
-    if (h->full) {
-      count = lb->model.nvel;
-    }
-    else {
-      int8_t mx = h->map.cv[p][X];
-      int8_t my = h->map.cv[p][Y];
-      int8_t mz = h->map.cv[p][Z];
-      int8_t mm = mx*mx + my*my + mz*mz;
-
-      /* Consider each model velocity in turn */
-      for (int q = 1; q < lb->model.nvel; q++) {
-	int8_t qx = lb->model.cv[q][X];
-	int8_t qy = lb->model.cv[q][Y];
-	int8_t qz = lb->model.cv[q][Z];
-	int8_t dot = mx*qx + my*qy + mz*qz;
-
-	if (mm == 3 && dot == mm) count +=1;   /* This is a corner */
-	if (mm == 2 && dot == mm) count +=1;   /* This is an edge */
-	if (mm == 1 && dot == mm) count +=1;   /* This is a side */
-      }
-    }
-
-    h->count[p] = count;
-    /* Allocate send buffer for send region */
-    if (count > 0) {
-      int scount = count*cs_limits_size(h->slim[p]);
-      h->send[p] = (double *) malloc(scount*sizeof(double));
-      assert(h->send[p]);
-    }
-    /* Allocate recv buffer */
-    if (count > 0) {
-      int rcount = count*cs_limits_size(h->rlim[p]);
-      h->recv[p] = (double *) malloc(rcount*sizeof(double));
-      assert(h->recv[p]);
-    }
-  }
-
-  /* Post recvs (from opposite direction cf send) */
-
-  for (int ireq = 0; ireq < h->map.nvel; ireq++) {
-
-    h->request[ireq] = MPI_REQUEST_NULL;
-
-    if (h->count[ireq] > 0) {
-      int i = 1 + h->map.cv[h->map.nvel-ireq][X];
-      int j = 1 + h->map.cv[h->map.nvel-ireq][Y];
-      int k = 1 + h->map.cv[h->map.nvel-ireq][Z];
-      int mcount = h->count[ireq]*cs_limits_size(h->rlim[ireq]);
-
-      if (h->nbrrank[i][j][k] == h->nbrrank[1][1][1]) mcount = 0;
-      
-      MPI_Irecv(h->recv[ireq], mcount, MPI_DOUBLE, h->nbrrank[i][j][k],
-		h->tagbase + ireq, h->comm, h->request + ireq);
-    }
-  }
-
-  /* Enqueue sends (upper half of request array) */
-
-  #pragma omp parallel for schedule(dynamic, 1)
-  for (int ireq = 0; ireq < h->map.nvel; ireq++) {
-
-    h->request[27+ireq] = MPI_REQUEST_NULL;
-
-    if (h->count[ireq] > 0) {
-      int i = 1 + h->map.cv[ireq][X];
-      int j = 1 + h->map.cv[ireq][Y];
-      int k = 1 + h->map.cv[ireq][Z];
-      int mcount = h->count[ireq]*cs_limits_size(h->slim[ireq]);
-
-      lb_halo_enqueue_send(lb, h, ireq);
-
-      /* Short circuit messages to self. */
-      if (h->nbrrank[i][j][k] == h->nbrrank[1][1][1]) mcount = 0;
-
-      #pragma omp critical
-      {
-	MPI_Isend(h->send[ireq], mcount, MPI_DOUBLE, h->nbrrank[i][j][k],
-		  h->tagbase + ireq, h->comm, h->request + 27 + ireq);
-      }
-    }
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  lb_halo_free
- *
- *  Complete all the send and receive requests.
- *
- *****************************************************************************/
-
-int lb_halo_free(lb_t * lb, lb_halo_t * h) {
-
-  assert(lb);
-  assert(h);
-
-  /* Can free() be used with thread safety? */
-
-  #pragma omp parallel for schedule(dynamic, 1)
-  for (int ireq = 0; ireq < 2*h->map.nvel; ireq++) {
-
-    int issatisfied = -1;
-    MPI_Status status = {};
-
-    #pragma omp critical
-    {
-      MPI_Waitany(2*h->map.nvel, h->request, &issatisfied, &status);
-    }
-    /* Check status is what we expect? */
-
-    if (issatisfied == MPI_UNDEFINED) {
-      /* No action e.g., for (0,0,0) case */
-    }
-    else {
-      /* Handle either send or recv request completion */
-      if (issatisfied < h->map.nvel) {
-	/* This is a recv */
-	int irreq = issatisfied;
-	lb_halo_dequeue_recv(lb, h, irreq);
-	free(h->recv[irreq]);
-      }
-      else {
-	/* This was a send */
-	int isreq = issatisfied - 27;
-	free(h->send[isreq]);
-      }
-    }
-  }
-
-  return 0;
 }
 
 /*****************************************************************************
@@ -561,7 +116,7 @@ int lb_halo_free(lb_t * lb, lb_halo_t * h) {
 
 int util_lb_data_check_set(lb_t * lb) {
 
-  int nlocal[3] = {};
+  int nlocal[3] = {0};
 
   assert(lb);
 
@@ -570,10 +125,12 @@ int util_lb_data_check_set(lb_t * lb) {
   for (int ic = 1; ic <= nlocal[X]; ic++) {
     for (int jc = 1; jc <= nlocal[Y]; jc++) {
       for (int kc = 1; kc <= nlocal[Z]; kc++) {
-	for (int p = 0 ; p < lb->model.nvel; p++) {
-	  int index = cs_index(lb->cs, ic, jc, kc);
-	  int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, 0, p);
-	  lb->f[laddr] = 1.0*lb_data_index(lb, ic, jc, kc, p); 
+	for (int n = 0; n < lb->ndist; n++) {
+	  for (int p = 0 ; p < lb->model.nvel; p++) {
+	    int index = cs_index(lb->cs, ic, jc, kc);
+	    int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, n, p);
+	    lb->f[laddr] = 1.0*lb_data_index(lb, ic, jc, kc, n, p);
+	  }
 	}
       }
     }
@@ -595,7 +152,7 @@ int util_lb_data_check(lb_t * lb, int full) {
   int ifail = 0;
   int nh = 1;
   int nhk = nh;
-  int nlocal[3] = {};
+  int nlocal[3] = {0};
 
   assert(lb);
 
@@ -615,24 +172,27 @@ int util_lb_data_check(lb_t * lb, int full) {
 
 	int index = cs_index(lb->cs, ic, jc, kc);
 
-	for (int p = 0; p < lb->model.nvel; p++) {
+	for (int n = 0; n < lb->ndist; n++) {
+	  for (int p = 0; p < lb->model.nvel; p++) {
 
-	  /* Look for propagating distributions (into domain). */
-	  int icdt = ic + lb->model.cv[p][X];
-	  int jcdt = jc + lb->model.cv[p][Y];
-	  int kcdt = kc + lb->model.cv[p][Z];
+	    /* Look for propagating distributions (into domain). */
+	    int icdt = ic + lb->model.cv[p][X];
+	    int jcdt = jc + lb->model.cv[p][Y];
+	    int kcdt = kc + lb->model.cv[p][Z];
 
-	  is_halo = (icdt < 1 || jcdt < 1 || kcdt < 1 ||
+	    is_halo = (icdt < 1 || jcdt < 1 || kcdt < 1 ||
 		     icdt > nlocal[X] || jcdt > nlocal[Y] || kcdt > nlocal[Z]);
 
-	  if (full || is_halo == 0) {
-	    /* Check */
-	    int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, 0, p);
-	    double fex = 1.0*lb_data_index(lb, ic, jc, kc, p);
-	    if (fabs(fex - lb->f[laddr]) > DBL_EPSILON) ifail += 1;
-	    assert(fabs(fex - lb->f[laddr]) < DBL_EPSILON);
+	    if (full || is_halo == 0) {
+	      /* Check */
+	      int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, n, p);
+	      double fex = 1.0*lb_data_index(lb, ic, jc, kc, n, p);
+	      if (fabs(fex - lb->f[laddr]) > DBL_EPSILON) ifail += 1;
+	      assert(fabs(fex - lb->f[laddr]) < DBL_EPSILON);
+	    }
 	  }
 	}
+	/* Next (ic,jc,kc) */
       }
     }
   }
@@ -642,31 +202,76 @@ int util_lb_data_check(lb_t * lb, int full) {
 
 /*****************************************************************************
  *
- *  test_lb_halo_create
+ *  util_lb_data_check_no_halo
+ *
+ *  Examine non-halo values.
  *
  *****************************************************************************/
 
-int test_lb_halo_create(pe_t * pe, cs_t * cs, int ndim, int nvel, int full) {
+int util_lb_data_check_no_halo(lb_t * lb) {
 
-  lb_data_options_t options = {.ndim = ndim, .nvel = nvel, .ndist = 1};
+  int ifail = 0;
+  int nlocal[3] = {0};
+
+  assert(lb);
+
+  cs_nlocal(lb->cs, nlocal);
+
+  /* Fix for 2d, where there should be no halo regions in Z */
+
+  for (int ic = 1; ic <= nlocal[X]; ic++) {
+    for (int jc = 1; jc <= nlocal[Y]; jc++) {
+      for (int kc = 1; kc <= nlocal[Z]; kc++) {
+
+	int index = cs_index(lb->cs, ic, jc, kc);
+
+	for (int n = 0; n < lb->ndist; n++) {
+	  for (int p = 0; p < lb->model.nvel; p++) {
+	    /* Check */
+	    int laddr = LB_ADDR(lb->nsite, lb->ndist, lb->nvel, index, n, p);
+	    double fex = 1.0*lb_data_index(lb, ic, jc, kc, n, p);
+	    if (fabs(fex - lb->f[laddr]) > DBL_EPSILON) ifail += 1;
+	    assert(fabs(fex - lb->f[laddr]) < DBL_EPSILON);
+	  }
+	}
+	/* Next (ic,jc,kc) */
+      }
+    }
+  }
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_lb_halo_post_wait
+ *
+ *****************************************************************************/
+
+int test_lb_halo_post_wait(pe_t * pe, cs_t * cs, int ndim, int nvel, int full) {
+
+  lb_data_options_t options = lb_data_options_default();
   lb_t * lb = NULL;
 
   assert(pe);
   assert(cs);
 
+  options.ndim = ndim;
+  options.nvel = nvel;
   lb_data_create(pe, cs, &options, &lb);
 
   util_lb_data_check_set(lb);
 
   {
-    lb_halo_t h = {};
-    lb_halo_create(lb, &h, full);
+    lb_halo_t h = {0};
+    lb_halo_create(lb, &h, LB_HALO_OPENMP_FULL);
+    lb_halo_post(lb, &h);
+    lb_halo_wait(lb, &h);
     lb_halo_free(lb, &h);
   }
 
   util_lb_data_check(lb, full);
-
-  lb_data_free(lb);
+  lb_free(lb);
 
   return 0;
 }
@@ -690,8 +295,8 @@ int test_lb_halo(pe_t * pe) {
     cs_ntotal_set(cs, ntotal);
     cs_init(cs);
 
-    test_lb_halo_create(pe, cs, 2, 9, 0);
-    test_lb_halo_create(pe, cs, 2, 9, 1);
+    test_lb_halo_post_wait(pe, cs, 2, 9, LB_HALO_OPENMP_REDUCED);
+    test_lb_halo_post_wait(pe, cs, 2, 9, LB_HALO_OPENMP_FULL);
 
     cs_free(cs);
   }
@@ -703,13 +308,13 @@ int test_lb_halo(pe_t * pe) {
     cs_create(pe, &cs);
     cs_init(cs);
 
-    test_lb_halo_create(pe, cs, 3, 15, 0);
-    test_lb_halo_create(pe, cs, 3, 15, 1);
-    test_lb_halo_create(pe, cs, 3, 19, 0);
-    test_lb_halo_create(pe, cs, 3, 19, 1);
-    test_lb_halo_create(pe, cs, 3, 27, 0);
-    test_lb_halo_create(pe, cs, 3, 27, 1);
-    
+    test_lb_halo_post_wait(pe, cs, 3, 15, LB_HALO_OPENMP_REDUCED);
+    test_lb_halo_post_wait(pe, cs, 3, 15, LB_HALO_OPENMP_FULL);
+    test_lb_halo_post_wait(pe, cs, 3, 19, LB_HALO_OPENMP_REDUCED);
+    test_lb_halo_post_wait(pe, cs, 3, 19, LB_HALO_OPENMP_FULL);
+    test_lb_halo_post_wait(pe, cs, 3, 27, LB_HALO_OPENMP_REDUCED);
+    test_lb_halo_post_wait(pe, cs, 3, 27, LB_HALO_OPENMP_FULL);
+
     cs_free(cs);
   }
 
@@ -737,17 +342,15 @@ int test_model_suite(void) {
 
   /* Test model structure (coordinate-independent stuff) */
 
-  test_model_constants();
   test_model_velocity_set();
 
   /* Now test actual distributions */
 
   do_test_model_distributions(pe, cs);
   do_test_model_halo_swap(pe, cs);
-  if (DATA_MODEL == DATA_MODEL_AOS && NSIMDVL == 1) {
-    do_test_model_reduced_halo_swap(pe, cs);
-  }
-  do_test_lb_model_io(pe, cs);
+  do_test_model_reduced_halo_swap(pe, cs);
+
+  test_lb_data_write(pe, cs);
 
   pe_info(pe, "PASS     ./unit/test_model\n");
   cs_free(cs);
@@ -758,65 +361,18 @@ int test_model_suite(void) {
 
 /*****************************************************************************
  *
- *  test_model_constants
- *
- *  Check the various constants associated with the reduced halo swap.
- *
- *****************************************************************************/
-
-static void test_model_constants(void) {
-
-#ifdef TEST_TO_BE_REMOVED_WITH_GLOBAL_SYMBOLS
-  int i, k, p;
-
-  for (i = 0; i < CVXBLOCK; i++) {
-    for (k = 0; k < xblocklen_cv[i]; k++) {
-      p = xdisp_fwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][X] == +1);
-      p = xdisp_bwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][X] == -1);
-    }
-  }
-
-  for (i = 0; i < CVYBLOCK; i++) {
-    for (k = 0; k < yblocklen_cv[i]; k++) {
-      p = ydisp_fwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][Y] == +1);
-      p = ydisp_bwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][Y] == -1);
-    }
-  }
-
-  for (i = 0; i < CVZBLOCK; i++) {
-    for (k = 0; k < zblocklen_cv[i]; k++) {
-      p = zdisp_fwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][Z] == +1);
-      p = zdisp_bwd_cv[i] + k;
-      test_assert(p >= 0 && p < NVEL);
-      test_assert(cv[p][Z] == -1);
-    }
-  }
-#endif
-  return;
-}
-
-/*****************************************************************************
- *
  *  test_model_velocity_set
  *
- *  Check the velocities, kinetic projector, tables of eigenvectors
- *  etc etc are all consistent for the current model.
+ *  Some residual older tests which remain relevant.
  *
  *****************************************************************************/
 
 static void test_model_velocity_set(void) {
 
   test_assert(NHYDRO == (1 + NDIM + NDIM*(NDIM+1)/2));
+
+  printf("Compiled model NDIM %2d NVEL %2d\n", NDIM, NVEL);
+  printf("sizeof(lb_collide_param_t) %ld bytes\n", sizeof(lb_collide_param_t));
 
   return;
 }
@@ -837,25 +393,21 @@ int do_test_model_distributions(pe_t * pe, cs_t * cs) {
   double fvalue, fvalue_expected;
   double u[3];
 
-  lb_t * lb;
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
 
   assert(pe);
   assert(cs);
 
   /* Tests of the basic distribution functions. */
 
-  lb_create(pe, cs, &lb);
+  options.ndim  = NDIM;
+  options.nvel  = NVEL;   
+  options.ndist = ndist;
+
+  lb_data_create(pe, cs, &options, &lb);
   assert(lb);
-  lb_ndist(lb, &n);
-  assert(n == 1); /* Default */
-
-  lb_ndist_set(lb, ndist);
-  lb_init(lb);
-
-  /* Report the number of distributions */
-
-  lb_ndist(lb, &n);
-  assert(n == ndist);
+  assert(lb->ndist == ndist);
 
   for (n = 0; n < ndist; n++) {
     for (p = 0; p < lb->model.nvel; p++) {
@@ -902,15 +454,16 @@ int do_test_model_halo_swap(pe_t * pe, cs_t * cs) {
   double f_expect;
   double f_actual;
 
+  lb_data_options_t options = lb_data_options_default();
   lb_t * lb = NULL;
 
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  assert(lb);
-  lb_ndist_set(lb, ndist);
-  lb_init(lb);
+  options.ndim = NDIM;
+  options.nvel = NVEL;
+  options.ndist = ndist;
+  lb_data_create(pe, cs, &options, &lb);
 
   cs_nlocal(cs, nlocal);
 
@@ -995,22 +548,24 @@ int do_test_model_reduced_halo_swap(pe_t * pe, cs_t * cs) {
   int i, j, k, p;
   int icdt, jcdt, kcdt;
   int index, nlocal[3];
-  int n, ndist = 2;
+  int n, ndist = 1;
   const int nextra = 1;
 
   double f_expect;
   double f_actual;
 
+  lb_data_options_t options = lb_data_options_default();
   lb_t * lb = NULL;
 
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
+  options.ndim = NDIM;
+  options.nvel = NVEL;
+  options.ndist = ndist;
+  options.halo = LB_HALO_OPENMP_REDUCED;
+  lb_data_create(pe, cs, &options, &lb);
   assert(lb);
-  lb_ndist_set(lb, ndist);
-  lb_init(lb);
-  lb_halo_set(lb, LB_HALO_REDUCED);
 
   cs_nlocal(cs, nlocal);
 
@@ -1030,7 +585,7 @@ int do_test_model_reduced_halo_swap(pe_t * pe, cs_t * cs) {
     }
   }
 
-  lb_halo_via_struct(lb);
+  lb_halo(lb);
 
   /* Now check that the interior sites are unchanged */
 
@@ -1117,33 +672,249 @@ static int test_model_is_domain(cs_t * cs, int ic, int jc, int kc) {
 
 /*****************************************************************************
  *
- *  do_test_lb_model_io
+ *  test_lb_data_write
  *
  *****************************************************************************/
 
-int do_test_lb_model_io(pe_t * pe, cs_t * cs) {
+int test_lb_data_write(pe_t * pe, cs_t * cs) {
 
-  int ndist = 2;
-  lb_t * lbrd = NULL;
-  lb_t * lbwr = NULL;
+  assert(NVELMAX == 27);
+
+  {
+    lb_data_options_t opts = lb_data_options_ndim_nvel_ndist(2, 9, 1);
+    test_lb_write_buf(pe, cs, &opts);
+    test_lb_write_buf_ascii(pe, cs, &opts);
+    test_lb_io_aggr_pack(pe, cs, &opts);
+  }
+
+  {
+    lb_data_options_t opts = lb_data_options_ndim_nvel_ndist(3, 15, 1);
+    test_lb_write_buf(pe, cs, &opts);
+    test_lb_write_buf_ascii(pe, cs, &opts);
+    test_lb_io_aggr_pack(pe, cs, &opts);
+  }
+
+  {
+    lb_data_options_t opts = lb_data_options_ndim_nvel_ndist(3, 19, 1);
+    test_lb_write_buf(pe, cs, &opts);
+    test_lb_write_buf_ascii(pe, cs, &opts);
+    test_lb_io_aggr_pack(pe, cs, &opts);
+  }
+
+  {
+    /* As D3Q19 is typically what was used for ndist = 2, here it is ... */
+    lb_data_options_t opts = lb_data_options_ndim_nvel_ndist(3, 19, 2);
+    test_lb_write_buf(pe, cs, &opts);
+    test_lb_write_buf_ascii(pe, cs, &opts);
+    test_lb_io_aggr_pack(pe, cs, &opts);
+  }
+
+  {
+    lb_data_options_t opts = lb_data_options_ndim_nvel_ndist(3, 27, 1);
+    test_lb_write_buf(pe, cs, &opts);
+    test_lb_write_buf_ascii(pe, cs, &opts);
+    test_lb_io_aggr_pack(pe, cs, &opts);
+  }
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  test_lb_write_buf
+ *
+ *  It is convenient to test lb_read_buf() at the same time.
+ *
+ *****************************************************************************/
+
+int test_lb_write_buf(pe_t * pe, cs_t * cs, const lb_data_options_t * opts) {
+
+  int ifail = 0;
+  lb_t * lb = NULL;
+  char buf[BUFSIZ] = {0};
 
   assert(pe);
   assert(cs);
+  assert(opts);
 
-  lb_create_ndist(pe, cs, ndist, &lbrd);
-  lb_create_ndist(pe, cs, ndist, &lbwr);
+  lb_data_create(pe, cs, opts, &lb);
 
-  lb_init(lbwr);
-  lb_init(lbrd);
+  assert(lb->ndist*lb->model.nvel*sizeof(double) < sizeof(buf));
 
-  /* Write */
+  {
+    /* Set some data at position (2,3,4) */
+    int index = cs_index(cs, 2, 3, 4);
 
-  /* Read */
+    for (int n = 0; n < lb->ndist; n++) {
+      for (int p = 0; p < lb->model.nvel; p++) {
+	double f = 1.0*(1 + n*lb->model.nvel + p); /* Test data, avoid zero */
+	lb_f_set(lb, index, p, n, f);
+      }
+    }
 
-  /* Compare */
+    lb_write_buf(lb, index, buf);
+  }
 
-  lb_free(lbwr);
-  lb_free(lbrd);
+  {
+    /* Read same buf in a different location */
+    int index = cs_index(cs, 3, 4, 5);
+    lb_read_buf(lb, index, buf);
+
+    /* Check the result in new position */
+    for (int n = 0; n < lb->ndist; n++) {
+      for (int p = 0; p < lb->model.nvel; p++) {
+	double fref = 1.0*(1 + n*lb->model.nvel + p);
+	double f = -1.0;
+	lb_f(lb, index, p, n, &f);
+	assert(fabs(f - fref) < DBL_EPSILON);
+	if (fabs(f - fref) >= DBL_EPSILON) ifail += 1;
+      }
+    }
+  }
+
+  lb_free(lb);
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_lb_write_buf_ascii
+ *
+ *****************************************************************************/
+
+int test_lb_write_buf_ascii(pe_t * pe, cs_t * cs,
+			    const lb_data_options_t * opts) {
+
+  int ifail = 0;
+  lb_t * lb = NULL;
+  char buf[BUFSIZ] = {0};
+
+  assert(pe);
+  assert(cs);
+  assert(opts);
+
+  /* Size of ascii record musst fir in buffer ... */
+  assert(opts->nvel*(opts->ndist*LB_RECORD_LENGTH_ASCII + 1) < BUFSIZ);
+
+  lb_data_create(pe, cs, opts, &lb);
+
+  /* Write some data */
+
+  {
+    /* Set some data at position (2,3,4) */
+    int index = cs_index(cs, 2, 3, 4);
+
+    for (int n = 0; n < lb->ndist; n++) {
+      for (int p = 0; p < lb->model.nvel; p++) {
+	double f = 1.0*(1 + n*lb->model.nvel + p); /* Test data, avoid zero */
+	lb_f_set(lb, index, p, n, f);
+      }
+    }
+
+    lb_write_buf_ascii(lb, index, buf);
+
+    {
+      /* Have we got the correct size? */
+      int count = lb->nvel*(lb->ndist*LB_RECORD_LENGTH_ASCII + 1);
+      size_t sz = count*sizeof(char);
+      if (sz != strnlen(buf, BUFSIZ)) ifail = -1;
+      assert(ifail == 0);
+    }
+  }
+
+  {
+    /* Read back in different memory position */
+    int index = cs_index(cs, 4, 5, 6);
+    lb_read_buf_ascii(lb, index, buf);
+
+    /* Check the result in new position */
+    for (int n = 0; n < lb->ndist; n++) {
+      for (int p = 0; p < lb->model.nvel; p++) {
+	double fref = 1.0*(1 + n*lb->model.nvel + p);
+	double f = -1.0;
+	lb_f(lb, index, p, n, &f);
+	if (fabs(f - fref) >= DBL_EPSILON) ifail = -1;
+	assert(ifail == 0);
+      }
+    }
+  }
+
+  lb_free(lb);
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_lb_io_aggr_pack
+ *
+ *  It is convenient to test lb_io_aggr_unpack() at the same time.
+ *
+ *****************************************************************************/
+
+int test_lb_io_aggr_pack(pe_t * pe, cs_t * cs, const lb_data_options_t *opts) {
+
+  lb_t * lb = NULL;
+  int nlocal[3] = {0};
+
+  assert(pe);
+  assert(cs);
+  assert(opts);
+
+  cs_nlocal(cs, nlocal);
+
+  lb_data_create(pe, cs, opts, &lb);
+
+  assert(lb->ascii.datatype == MPI_CHAR);
+  assert(lb->ascii.datasize == sizeof(char));
+  assert(lb->ascii.count    == lb->nvel*(1 + lb->ndist*LB_RECORD_LENGTH_ASCII));
+  assert(lb->binary.datatype == MPI_DOUBLE);
+  assert(lb->binary.datasize == sizeof(double));
+  assert(lb->binary.count    == lb->nvel*lb->ndist);
+
+  /* ASCII */
+  /* Aggregator */
+
+  {
+    /* We don't use the metadata quantities here */
+    cs_limits_t lim = {1, nlocal[X], 1, nlocal[Y], 1, nlocal[Z]};
+    io_aggregator_t aggr = {0};
+
+    io_aggregator_initialise(lb->ascii, lim, &aggr);
+    util_lb_data_check_set(lb);
+    lb_io_aggr_pack(lb, &aggr);
+
+    /* Clear the ditributions, unpack, and check */
+    memset(lb->f, 0, sizeof(double)*lb->nvel*lb->ndist*lb->nsite);
+
+    lb_io_aggr_unpack(lb, &aggr);
+    util_lb_data_check_no_halo(lb);
+
+    io_aggregator_finalise(&aggr);
+  }
+
+  /* BINARY */
+
+  {
+    /* We don't use the metadata quantities here */
+    cs_limits_t lim = {1, nlocal[X], 1, nlocal[Y], 1, nlocal[Z]};
+    io_aggregator_t aggr = {0};
+
+    io_aggregator_initialise(lb->binary, lim, &aggr);
+    util_lb_data_check_set(lb);
+    lb_io_aggr_pack(lb, &aggr);
+
+    /* Clear the ditributions, unpack, and check */
+    memset(lb->f, 0, sizeof(double)*lb->nvel*lb->ndist*lb->nsite);
+
+    lb_io_aggr_unpack(lb, &aggr);
+    util_lb_data_check_no_halo(lb);
+
+    io_aggregator_finalise(&aggr);
+  }
+
+  lb_free(lb);
 
   return 0;
 }

@@ -3,7 +3,7 @@
 
 A lattice Boltzmann code for complex fluids
 
-[![Build Status](https://travis-ci.com/ludwig-cf/ludwig.svg?branch=develop)](https://travis-ci.com/ludwig-cf/ludwig)
+![Build Status](https://github.com/ludwig-cf/ludwig/actions/workflows/regression.yml/badge.svg)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1998/badge)](https://bestpractices.coreinfrastructure.org/projects/1998)
 
 
@@ -18,8 +18,8 @@ in a free energy picture.
 The code is written in standard ANSI C, and uses the Message Passing
 Interface for distributed memory parallelism. Threaded parallelism is
 also available via a lightweight abstraction layer ("Target Data Parallel"
-or "TargetDP") which currently supports either OpenMP or CUDA (NVIDIA GPUs)
-from a single source.
+or "TargetDP") which currently supports OpenMP, CUDA (NVIDIA GPUs) or
+HIP (AMD GPUs) from a single source.
 
 #### Installation
 
@@ -44,10 +44,11 @@ $ make test
 ```
 
 
-Full details of the build process are available at
+Full details of the build process, and tutorials on how to
+use the code are available at
 <a href = "https://ludwg.epcc.ed.ac.uk/">https://ludwig.epcc.ed.ac.uk/</a>.
 
-#### Background and Tutorial
+#### Background
 
 Background documentation on the LB model and various free energy choices
 is available in the `docs` directory.
@@ -57,14 +58,6 @@ $ make
 ```
 will produce a pdf version of the LaTeX source.
 
-A short tutorial, which includes some examples in which the
-results are visualised, is also provided:
-```
-$ cd docs/tutorial
-$ make
-```
-to produce a pdf of the tutorial instructions.
-
 #### Contributing
 
 If you would like to contribute, please consider a pull request.
@@ -72,12 +65,15 @@ See `CONTRIBUTING.md` for further details of testing and
 development.
 
 
-#### Attribution
+#### Credits
 
 [![DOI](https://zenodo.org/badge/137508275.svg)](https://zenodo.org/badge/latestdoi/137508275)
 
 Recent release versions have a Zenodo-provided DOI. Please consider using the
 appropriate DOI as a reference if you use Ludwig in your publications.
+
+From Version 0.19.0 we have included a copy of `cJSON` which is released
+under an MIT license by Gave Gamble at https://github.com/DaveGamble/cJSON.
 
 #### Help
 

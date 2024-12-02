@@ -6,17 +6,15 @@
 #
 #    default:         builds unit tests
 #    test:            runs unit tests and d3q19-short (default test)
+#    d2q9             D2Q9 tests
+#    d3q15            D3Q15 tests
 #    d3q19-short      a batch of shorter tests
-#    d3q19-extra      a extra batch of longer tests
-#    d3q19-io         a batch of tests with file I/O
-#    d3q19-elec       a batch of tests for electrokinetics
-#
-#    d3q19-short-gpu  unit tests and d3q19-short-gpu
+#    d3q27            D3Q27  tests
 #
 #  Edinburgh Soft Matter and Statistical Physics Group and
 #  Edinburgh Parallel Computing Centre
 #
-#  (c) 2015-2019 The University of Edinburgh
+#  (c) 2015-2024 The University of Edinburgh
 #  Contributing authors:
 #  Kevin Stratford (kevinAepcc.ed.ac.uk)
 #
@@ -41,22 +39,17 @@ verbose:
 
 # Specific tests
 
+d2q9:
+	$(MAKE) -C regression/d2q9
+
+d3q15:
+	$(MAKE) -C regression/d3q15
+
 d3q19-short:
 	$(MAKE) -C regression/d3q19-short
 
-d3q19-extra:
-	$(MAKE) -C regression/d3q19-extra
-
-d3q19-io:
-	$(MAKE) -C regression/d3q19-io
-
-d3q19-elec:
-	$(Make) -C regression/d3q19-elec
-
-# GPU target
-
-d3q19-short-gpu:
-	$(MAKE) -C regression/d3q19-short-gpu
+d3q27:
+	$(MAKE) -C regression/d3q27
 
 # Clean
 

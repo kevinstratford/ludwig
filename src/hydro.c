@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2012-2021 The University of Edinburgh
+ *  (c) 2012-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -17,29 +17,24 @@
 
 #include <assert.h>
 #include <math.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 
 #include "kernel.h"
-#include "coords_field.h"
-#include "util.h"
 #include "hydro.h"
+#include "util.h"
 
 static int hydro_lees_edwards_parallel(hydro_t * obj);
-static int hydro_u_write(FILE * fp, int index, void * self);
-static int hydro_u_write_ascii(FILE * fp, int index, void * self);
-static int hydro_u_read(FILE * fp, int index, void * self);
-static int hydro_u_read_ascii(FILE * fp, int index, void * self);
 
 static __global__
 void hydro_field_set(hydro_t * hydro, double * field, double, double, double);
 
-__global__ void hydro_accumulate_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_accumulate_kernel(kernel_3d_t k3d, hydro_t * hydro,
                                         double fnet[3]);
-__global__ void hydro_correct_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_correct_kernel(kernel_3d_t k3d, hydro_t * hydro,
                                      double fnet[3]);
-__global__ void hydro_accumulate_kernel_v(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_accumulate_kernel_v(kernel_3d_v_t k3v, hydro_t * hydro,
                                           double fnet[3]);
-__global__ void hydro_correct_kernel_v(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_correct_kernel_v(kernel_3d_v_t k3v, hydro_t * hydro,
 				       double fnet[3]);
 __global__ void hydro_rho0_kernel(int nsite, double rho0, double * rho);
 
@@ -54,15 +49,15 @@ __global__ void hydro_rho0_kernel(int nsite, double rho0, double * rho);
  *
  *****************************************************************************/
 
-__host__ int hydro_create(pe_t * pe, cs_t * cs, lees_edw_t * le, int nhcomm,
+__host__ int hydro_create(pe_t * pe, cs_t * cs, lees_edw_t * le,
+			  const hydro_options_t * opts,
 			  hydro_t ** pobj) {
-
-  int ndevice;
-  double * tmp;
+  int ndevice = 0;
   hydro_t * obj = (hydro_t *) NULL;
 
   assert(pe);
   assert(cs);
+  assert(opts);
   assert(pobj);
 
   obj = (hydro_t *) calloc(1, sizeof(hydro_t));
@@ -72,30 +67,21 @@ __host__ int hydro_create(pe_t * pe, cs_t * cs, lees_edw_t * le, int nhcomm,
   obj->pe = pe;
   obj->cs = cs;
   obj->le = le;
-  obj->nhcomm = nhcomm;
+  obj->nhcomm = opts->nhcomm;
 
   cs_nsites(cs, &obj->nsite);
   if (le) lees_edw_nsites(le, &obj->nsite);
 
-  obj->rho = (double *) mem_aligned_calloc(MEM_PAGESIZE, obj->nsite,
-					   sizeof(double));
-  obj->u = (double *) mem_aligned_calloc(MEM_PAGESIZE, NHDIM*obj->nsite,
-					 sizeof(double));
-  if (obj->rho == NULL) pe_fatal(pe, "calloc(hydro-rho) failed\n");
-  if (obj->u == NULL) pe_fatal(pe, "calloc(hydro->u) failed\n");
+  /* Fields */
+  /* rho: scalar field with no halo swap (halo width zero). */
+  /* vel: vector velocity field */
+  /* force: vector body force dencity */
+  /* eta: scalar viscosity with no halo swap */
 
-  obj->f = (double *) mem_aligned_calloc(MEM_PAGESIZE, NHDIM*obj->nsite,
-					 sizeof(double));
-  if (obj->f == NULL) pe_fatal(pe, "calloc(hydro->f) failed\n");
-
-  obj->eta =
-    (double *) mem_aligned_calloc(MEM_PAGESIZE, obj->nsite, sizeof(double));
-  if (obj->eta == NULL) pe_fatal(pe, "calloc(hydro->eta) failed\n");
-
-  halo_swap_create_r1(pe, cs, nhcomm, obj->nsite, NHDIM, &obj->halo);
-  assert(obj->halo);
-
-  halo_swap_handlers_set(obj->halo, halo_swap_pack_rank1, halo_swap_unpack_rank1);
+  field_create(pe, cs, le, "rho",   &opts->rho,   &obj->rho);
+  field_create(pe, cs, le, "vel",   &opts->u,     &obj->u);
+  field_create(pe, cs, le, "force", &opts->force, &obj->force);
+  field_create(pe, cs, le, "eta",   &opts->eta,   &obj->eta);
 
   /* Allocate target copy of structure (or alias) */
 
@@ -109,28 +95,18 @@ __host__ int hydro_create(pe_t * pe, cs_t * cs, lees_edw_t * le, int nhcomm,
     tdpAssert(tdpMalloc((void **) &obj->target, sizeof(hydro_t)));
     tdpAssert(tdpMemset(obj->target, 0, sizeof(hydro_t)));
 
-    tdpAssert(tdpMalloc((void **) &tmp, obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemset(tmp, 0, obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemcpy(&obj->target->rho, &tmp, sizeof(double *),
-			tdpMemcpyHostToDevice));
-
-    tdpAssert(tdpMalloc((void **) &tmp, NHDIM*obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemset(tmp, 0, NHDIM*obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemcpy(&obj->target->u, &tmp, sizeof(double *),
-			tdpMemcpyHostToDevice)); 
-
-    tdpAssert(tdpMalloc((void **) &tmp, NHDIM*obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemset(tmp, 0, NHDIM*obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemcpy(&obj->target->f, &tmp, sizeof(double *),
-			tdpMemcpyHostToDevice)); 
-
-    tdpAssert(tdpMalloc((void **) &tmp, obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemset(tmp, 0, obj->nsite*sizeof(double)));
-    tdpAssert(tdpMemcpy(&obj->target->eta, &tmp, sizeof(double *),
-			tdpMemcpyHostToDevice)); 
-
     tdpAssert(tdpMemcpy(&obj->target->nsite, &obj->nsite, sizeof(int),
 			tdpMemcpyHostToDevice));
+
+    /* Fields: target pointers should be copied ... */
+    tdpAssert(tdpMemcpy(&obj->target->rho, &obj->rho->target,
+			sizeof(field_t *), tdpMemcpyHostToDevice));
+    tdpAssert(tdpMemcpy(&obj->target->u, &obj->u->target,
+			sizeof(field_t *), tdpMemcpyHostToDevice));
+    tdpAssert(tdpMemcpy(&obj->target->force, &obj->force->target,
+			sizeof(field_t *), tdpMemcpyHostToDevice));
+    tdpAssert(tdpMemcpy(&obj->target->eta, &obj->eta->target,
+			sizeof(field_t *), tdpMemcpyHostToDevice));
   }
 
   *pobj = obj;
@@ -147,36 +123,18 @@ __host__ int hydro_create(pe_t * pe, cs_t * cs, lees_edw_t * le, int nhcomm,
 __host__ int hydro_free(hydro_t * obj) {
 
   int ndevice;
-  double * tmp;
 
   assert(obj);
 
   tdpGetDeviceCount(&ndevice);
 
-  if (ndevice > 0) {
+  if (ndevice > 0) tdpAssert(tdpFree(obj->target));
 
-    tdpAssert(tdpMemcpy(&tmp, &obj->target->rho, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-    tdpAssert(tdpFree(tmp));
+  field_free(obj->eta);
+  field_free(obj->force);
+  field_free(obj->u);
+  field_free(obj->rho);
 
-    tdpAssert(tdpMemcpy(&tmp, &obj->target->u, sizeof(double *),
-			tdpMemcpyDeviceToHost)); 
-    tdpAssert(tdpFree(tmp));
-    tdpAssert(tdpMemcpy(&tmp, &obj->target->f, sizeof(double *),
-			tdpMemcpyDeviceToHost)); 
-    tdpAssert(tdpFree(tmp));
-    tdpAssert(tdpMemcpy(&tmp, &obj->target->eta, sizeof(double *),
-			tdpMemcpyDeviceToHost)); 
-    tdpAssert(tdpFree(tmp));
-    tdpAssert(tdpFree(obj->target));
-  }
-
-  halo_swap_free(obj->halo);
-  if (obj->info) io_info_free(obj->info);
-  free(obj->eta);
-  free(obj->f);
-  free(obj->u);
-  free(obj->rho);
   free(obj);
 
   return 0;
@@ -191,9 +149,6 @@ __host__ int hydro_free(hydro_t * obj) {
 __host__ int hydro_memcpy(hydro_t * obj, tdpMemcpyKind flag) {
 
   int ndevice;
-  double * tmpu;
-  double * tmpf;
-  double * tmpeta;
 
   assert(obj);
 
@@ -204,34 +159,15 @@ __host__ int hydro_memcpy(hydro_t * obj, tdpMemcpyKind flag) {
     assert(obj->target == obj);
   }
   else {
-    double * tmprho = NULL;
 
-    tdpAssert(tdpMemcpy(&tmprho, &obj->target->rho, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-    tdpAssert(tdpMemcpy(&tmpf, &obj->target->f, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-    tdpAssert(tdpMemcpy(&tmpu, &obj->target->u, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-    tdpAssert(tdpMemcpy(&tmpeta, &obj->target->eta, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-
-    switch (flag) {
-    case tdpMemcpyHostToDevice:
-      tdpAssert(tdpMemcpy(tmprho, obj->rho, obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(tmpu, obj->u, NHDIM*obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(tmpf, obj->f, NHDIM*obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(tmpeta, obj->eta, obj->nsite*sizeof(double), flag));
+    if (flag == tdpMemcpyHostToDevice) {
       tdpAssert(tdpMemcpy(&obj->target->nsite, &obj->nsite, sizeof(int), flag));
-      break;
-    case tdpMemcpyDeviceToHost:
-      tdpAssert(tdpMemcpy(obj->rho, tmprho, obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(obj->f, tmpf, NHDIM*obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(obj->u, tmpu, NHDIM*obj->nsite*sizeof(double), flag));
-      tdpAssert(tdpMemcpy(obj->eta, tmpeta, obj->nsite*sizeof(double), flag));
-      break;
-    default:
-      pe_fatal(obj->pe, "Bad flag in hydro_memcpy\n");
     }
+    /* Fields */
+    field_memcpy(obj->rho,   flag);
+    field_memcpy(obj->u,     flag);
+    field_memcpy(obj->force, flag);
+    field_memcpy(obj->eta,   flag);
   }
 
   return 0;
@@ -241,13 +177,16 @@ __host__ int hydro_memcpy(hydro_t * obj, tdpMemcpyKind flag) {
  *
  *  hydro_u_halo
  *
+ *  This means the velocity field only.
+ *  If other fields are requirted, use field_halo() explicitly.
+ *
  *****************************************************************************/
 
 __host__ int hydro_u_halo(hydro_t * obj) {
 
   assert(obj);
 
-  hydro_halo_swap(obj, HYDRO_U_HALO_TARGET);
+  field_halo(obj->u);
 
   return 0;
 }
@@ -256,219 +195,15 @@ __host__ int hydro_u_halo(hydro_t * obj) {
  *
  *  hydro_halo_swap
  *
- *  There is no halo swap in the density at the moment, as it is never
- *  required.
+ *  Again, this means only the velocity field.
  *
  *****************************************************************************/
 
-__host__ int hydro_halo_swap(hydro_t * obj, hydro_halo_enum_t flag) {
-
-  double * data;
+__host__ int hydro_halo_swap(hydro_t * obj, field_halo_enum_t flag) {
 
   assert(obj);
 
-  switch (flag) {
-  case HYDRO_U_HALO_HOST:
-    halo_swap_host_rank1(obj->halo, obj->u, MPI_DOUBLE);
-    break;
-  case HYDRO_U_HALO_TARGET:
-    tdpAssert(tdpMemcpy(&data, &obj->target->u, sizeof(double *),
-			tdpMemcpyDeviceToHost));
-    halo_swap_packed(obj->halo, data);
-    break;
-  default:
-    assert(0);
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_init_io_info
- *
- *  There is no read for the velocity; this should come from the
- *  distribution.
- *
- *****************************************************************************/
-
-__host__ int hydro_init_io_info(hydro_t * obj, int grid[3], int form_in,
-				int form_out) {
-
-  io_info_arg_t args;
-
-  assert(obj);
-  assert(grid);
-  assert(obj->info == NULL);
-
-  args.grid[X] = grid[X];
-  args.grid[Y] = grid[Y];
-  args.grid[Z] = grid[Z];
-
-  io_info_create(obj->pe, obj->cs, &args, &obj->info);
-  if (obj->info == NULL) pe_fatal(obj->pe, "io_info_create(hydro) failed\n");
-
-  io_info_set_name(obj->info, "Velocity field");
-  io_info_write_set(obj->info, IO_FORMAT_BINARY, hydro_u_write);
-  io_info_write_set(obj->info, IO_FORMAT_ASCII, hydro_u_write_ascii);
-  io_info_read_set(obj->info, IO_FORMAT_BINARY, hydro_u_read);
-  io_info_read_set(obj->info, IO_FORMAT_ASCII, hydro_u_read_ascii);
-
-  /* ASCII output size (see write_ascii) is 69 bytes */
-  io_info_set_bytesize(obj->info, IO_FORMAT_BINARY, NHDIM*sizeof(double));
-  io_info_set_bytesize(obj->info, IO_FORMAT_ASCII, 69);
-
-  io_info_format_set(obj->info, form_in, form_out);
-  io_info_metadata_filestub_set(obj->info, "vel");
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_io_info
- *
- *****************************************************************************/
-
-__host__ int hydro_io_info(hydro_t * obj, io_info_t ** info) {
-
-  assert(obj);
-  assert(obj->info); /* Should have been initialised */
-
-  *info = obj->info;
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_f_local_set
- *
- *****************************************************************************/
-
-__host__ __device__
-int hydro_f_local_set(hydro_t * obj, int index, const double force[3]) {
-
-  int ia;
-
-  assert(obj);
-
-  for (ia = 0; ia < 3; ia++) {
-    obj->f[addr_rank1(obj->nsite, NHDIM, index, ia)] = force[ia];
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_f_local
- *
- *****************************************************************************/
-
-__host__ __device__
-int hydro_f_local(hydro_t * obj, int index, double force[3]) {
-
-  int ia;
-
-  assert(obj);
-
-  for (ia = 0; ia < 3; ia++) {
-    force[ia] = obj->f[addr_rank1(obj->nsite, NHDIM, index, ia)];
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_f_local_add
- *
- *  Accumulate (repeat, accumulate) the fluid force at site index.
- *
- *****************************************************************************/
-
-__host__ __device__
-int hydro_f_local_add(hydro_t * obj, int index, const double force[3]) {
-
-  int ia;
-
-  assert(obj);
-
-  for (ia = 0; ia < 3; ia++) {
-    obj->f[addr_rank1(obj->nsite, NHDIM, index, ia)] += force[ia]; 
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_rho_set
- *
- *****************************************************************************/
-
-__host__ __device__ int hydro_rho_set(hydro_t * hydro, int index, double rho) {
-
-  assert(hydro);
-
-  hydro->rho[addr_rank0(hydro->nsite, index)] = rho;
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_rho
- *
- *****************************************************************************/
-
-__host__ __device__ int hydro_rho(hydro_t * hydro, int index, double * rho) {
-
-  assert(hydro);
-  assert(rho);
-
-  *rho = hydro->rho[addr_rank0(hydro->nsite, index)];
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u_set
- *
- *****************************************************************************/
-
-__host__ __device__
-int hydro_u_set(hydro_t * obj, int index, const double u[3]) {
-
-  int ia;
-
-  assert(obj);
-
-  for (ia = 0; ia < 3; ia++) {
-    obj->u[addr_rank1(obj->nsite, NHDIM, index, ia)] = u[ia];
-  }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u
- *
- *****************************************************************************/
-
-__host__ __device__
-int hydro_u(hydro_t * obj, int index, double u[3]) {
-
-  int ia;
-
-  assert(obj);
-
-  for (ia = 0; ia < 3; ia++) {
-    u[ia] = obj->u[addr_rank1(obj->nsite, NHDIM, index, ia)];
-  }
+  field_halo_swap(obj->u, flag);
 
   return 0;
 }
@@ -486,7 +221,7 @@ __host__ int hydro_u_zero(hydro_t * obj, const double uzero[NHDIM]) {
 
   assert(obj);
 
-  tdpAssert(tdpMemcpy(&u, &obj->target->u, sizeof(double *),
+  tdpAssert(tdpMemcpy(&u, &obj->u->target->data, sizeof(double *),
 		      tdpMemcpyDeviceToHost));
 
   kernel_launch_param(obj->nsite, &nblk, &ntpb);
@@ -514,7 +249,7 @@ __host__ int hydro_f_zero(hydro_t * obj, const double fzero[NHDIM]) {
   assert(obj);
   assert(obj->target);
 
-  tdpAssert(tdpMemcpy(&f, &obj->target->f, sizeof(double *),
+  tdpAssert(tdpMemcpy(&f, &obj->force->target->data, sizeof(double *),
 		      tdpMemcpyDeviceToHost));
 
   kernel_launch_param(obj->nsite, &nblk, &ntpb);
@@ -543,7 +278,7 @@ __host__ int hydro_rho0(hydro_t * obj, double rho0) {
   assert(obj);
   assert(obj->target);
 
-  tdpAssert(tdpMemcpy(&rho, &obj->target->rho, sizeof(double *),
+  tdpAssert(tdpMemcpy(&rho, &obj->rho->target->data, sizeof(double *),
 		      tdpMemcpyDeviceToHost));
 
   kernel_launch_param(obj->nsite, &nblk, &ntpb);
@@ -640,7 +375,11 @@ __host__ int hydro_lees_edwards(hydro_t * obj) {
   cs_cartsz(obj->cs, mpi_cartsz);
 
   /* All on host at the moment, so copy here and copy back at end */
-  hydro_memcpy(obj, tdpMemcpyDeviceToHost);
+
+  {
+    int nplane = lees_edw_nplane_total(obj->le);
+    if (nplane > 0) hydro_memcpy(obj, tdpMemcpyDeviceToHost);
+  }
 
   if (mpi_cartsz[Y] > 1) {
     hydro_lees_edwards_parallel(obj);
@@ -681,16 +420,19 @@ __host__ int hydro_lees_edwards(hydro_t * obj) {
 	  index1 = lees_edw_index(obj->le, ic, j1, kc);
 	  index2 = lees_edw_index(obj->le, ic, j2, kc);
 	  for (ia = 0; ia < 3; ia++) {
-	    obj->u[addr_rank1(obj->nsite, NHDIM, index0, ia)] = ule[ia] +
-	      obj->u[addr_rank1(obj->nsite, NHDIM, index1, ia)]*fr +
-	      obj->u[addr_rank1(obj->nsite, NHDIM, index2, ia)]*(1.0 - fr);
+	    obj->u->data[addr_rank1(obj->nsite, NHDIM, index0, ia)] = ule[ia] +
+	      obj->u->data[addr_rank1(obj->nsite, NHDIM, index1, ia)]*fr +
+	      obj->u->data[addr_rank1(obj->nsite, NHDIM, index2, ia)]*(1.0 - fr);
 	  }
 	}
       }
     }
   }
 
-  hydro_memcpy(obj, tdpMemcpyHostToDevice);
+  {
+    int nplane = lees_edw_nplane_total(obj->le);
+    if (nplane > 0) hydro_memcpy(obj, tdpMemcpyHostToDevice);
+  }
 
   return 0;
 }
@@ -760,7 +502,7 @@ static int hydro_lees_edwards_parallel(hydro_t * obj) {
 
   sbuf = (double *) calloc(nsend, sizeof(double));
   rbuf = (double *) calloc(nrecv, sizeof(double));
- 
+
   if (sbuf == NULL) pe_fatal(obj->pe, "hydro: malloc(le sbuf) failed\n");
   if (rbuf == NULL) pe_fatal(obj->pe, "hydro: malloc(le rbuf) failed\n");
 
@@ -815,7 +557,7 @@ static int hydro_lees_edwards_parallel(hydro_t * obj) {
 	for (ia = 0; ia < NHDIM; ia++) {
 	  j1 = (jc - 1)*NHDIM*(nlocal[Z] + 2*nhalo) + NHDIM*(kc + nhalo - 1) + ia;
 	  assert(j1 >= 0 && j1 < nsend);
-	  sbuf[j1] = obj->u[addr_rank1(obj->nsite, NHDIM, index, ia)];
+	  sbuf[j1] = obj->u->data[addr_rank1(obj->nsite, NHDIM, index, ia)];
 	}
       }
     }
@@ -841,7 +583,7 @@ static int hydro_lees_edwards_parallel(hydro_t * obj) {
       for (kc = 1 - nhalo; kc <= nlocal[Z] + nhalo; kc++) {
 	index = lees_edw_index(obj->le, ib0 + ib, jc, kc);
 	for (ia = 0; ia < NHDIM; ia++) {
-	  obj->u[addr_rank1(obj->nsite, NHDIM, index, ia)] = ule[ia]
+	  obj->u->data[addr_rank1(obj->nsite, NHDIM, index, ia)] = ule[ia]
 	    + fr*rbuf[NHDIM*(j1 + kc + nhalo - 1) + ia]
 	    + (1.0 - fr)*rbuf[NHDIM*(j2 + kc + nhalo - 1) + ia];
 	}
@@ -853,99 +595,6 @@ static int hydro_lees_edwards_parallel(hydro_t * obj) {
 
   free(sbuf);
   free(rbuf);
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u_write
- *
- *****************************************************************************/
-
-static int hydro_u_write(FILE * fp, int index, void * arg) {
-
-  int n;
-  double u[3];
-  hydro_t * obj = (hydro_t*) arg;
-
-  assert(fp);
-  assert(obj);
-
-  hydro_u(obj, index, u);
-  n = fwrite(u, sizeof(double), NHDIM, fp);
-  if (n != NHDIM) pe_fatal(obj->pe, "fwrite(hydro->u) failed\n");
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u_write_ascii
- *
- *****************************************************************************/
-
-static int hydro_u_write_ascii(FILE * fp, int index, void * arg) {
-
-  int n;
-  double u[3];
-  hydro_t * obj = (hydro_t *) arg;
-
-  assert(fp);
-  assert(obj);
-
-  hydro_u(obj, index, u);
-
-  n = fprintf(fp, "%22.15e %22.15e %22.15e\n", u[X], u[Y], u[Z]);
-
-  /* Expect total of 69 characters ... */
-  if (n != 69) pe_fatal(obj->pe, "fprintf(hydro->u) failed\n");
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u_read
- *
- *****************************************************************************/
-
-int hydro_u_read(FILE * fp, int index, void * self) {
-
-  int n;
-  double u[3];
-  hydro_t * obj = (hydro_t *) self;
-
-  assert(fp);
-  assert(obj);
-
-  n = fread(u, sizeof(double), NHDIM, fp);
-  if (n != NHDIM) pe_fatal(obj->pe, "fread(hydro->u) failed\n");
-
-  hydro_u_set(obj, index, u);
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  hydro_u_read_ascii
- *
- *****************************************************************************/
-
-static int hydro_u_read_ascii(FILE * fp, int index, void * self) {
-
-  int n;
-  double u[3];
-  hydro_t * obj = (hydro_t *) self;
-
-  assert(fp);
-  assert(obj);
-
-  n = fscanf(fp, "%le %le %le", &u[X], &u[Y], &u[Z]);
-  if (n != NHDIM) pe_fatal(obj->pe, "fread(hydro->u) failed\n");
-
-  hydro_u_set(obj, index, u);
 
   return 0;
 }
@@ -976,32 +625,32 @@ __host__ int hydro_u_gradient_tensor(hydro_t * obj, int ic, int jc, int kc,
   ip1 = lees_edw_ic_to_buff(obj->le, ic, +1);
   ip1 = lees_edw_index(obj->le, ip1, jc, kc);
 
-  w[X][X] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, X)]);
-  w[Y][X] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
-  w[Z][X] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
+  w[X][X] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, X)]);
+  w[Y][X] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
+  w[Z][X] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
 
   im1 = lees_edw_index(obj->le, ic, jc - 1, kc);
   ip1 = lees_edw_index(obj->le, ic, jc + 1, kc);
 
-  w[X][Y] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, X)]);
-  w[Y][Y] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
-  w[Z][Y] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
+  w[X][Y] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, X)]);
+  w[Y][Y] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
+  w[Z][Y] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
 
   im1 = lees_edw_index(obj->le, ic, jc, kc - 1);
   ip1 = lees_edw_index(obj->le, ic, jc, kc + 1);
 
-  w[X][Z] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, X)]);
-  w[Y][Z] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
-  w[Z][Z] = 0.5*(obj->u[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
-		 obj->u[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
+  w[X][Z] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, X)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, X)]);
+  w[Y][Z] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Y)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Y)]);
+  w[Z][Z] = 0.5*(obj->u->data[addr_rank1(obj->nsite, NHDIM, ip1, Z)] -
+		 obj->u->data[addr_rank1(obj->nsite, NHDIM, im1, Z)]);
 
   /* Enforce tracelessness */
 
@@ -1033,37 +682,35 @@ __host__ int hydro_correct_momentum(hydro_t * hydro) {
   double fnet[3] = {0.0, 0.0, 0.0};
   double * fnetd = NULL;
 
-  dim3 nblk, ntpb;
-  kernel_info_t limits;
-  kernel_ctxt_t * ctxt = NULL;
-
   assert(hydro);
 
   cs_nlocal(hydro->cs, nlocal);
   cs_cart_comm(hydro->cs, &comm);
 
-  limits.imin = 1; limits.imax = nlocal[X];
-  limits.jmin = 1; limits.jmax = nlocal[Y];
-  limits.kmin = 1; limits.kmax = nlocal[Z];
+  {
+    dim3 nblk = {};
+    dim3 ntpb = {};
+    cs_limits_t lim = {1, nlocal[X], 1, nlocal[Y], 1, nlocal[Z]};
+    kernel_3d_v_t k3v = kernel_3d_v(hydro->cs, lim, NSIMDVL);
 
-  kernel_ctxt_create(hydro->cs, NSIMDVL, limits, &ctxt);
-  kernel_ctxt_launch_param(ctxt, &nblk, &ntpb);
+    kernel_3d_launch_param(k3v.kiterations, &nblk, &ntpb);
 
-  tdpAssert(tdpMalloc((void **) &fnetd, 3*sizeof(double)));
-  tdpAssert(tdpMemcpy(fnetd, fnet, 3*sizeof(double), tdpMemcpyHostToDevice));
+    tdpAssert(tdpMalloc((void **) &fnetd, 3*sizeof(double)));
+    tdpAssert(tdpMemcpy(fnetd, fnet, 3*sizeof(double), tdpMemcpyHostToDevice));
 
-  /* Accumulate net force */
+    /* Accumulate net force */
 
-  tdpLaunchKernel(hydro_accumulate_kernel_v, nblk, ntpb, 0, 0,
-		  ctxt->target, hydro->target, fnetd);
+    tdpLaunchKernel(hydro_accumulate_kernel_v, nblk, ntpb, 0, 0,
+		    k3v, hydro->target, fnetd);
 
-  tdpAssert(tdpPeekAtLastError());
+    tdpAssert(tdpPeekAtLastError());
 
-  cs_ltot(hydro->cs, ltot);
-  rv = 1.0/(ltot[X]*ltot[Y]*ltot[Z]);
+    cs_ltot(hydro->cs, ltot);
+    rv = 1.0/(ltot[X]*ltot[Y]*ltot[Z]);
 
-  tdpAssert(tdpDeviceSynchronize());
-  tdpAssert(tdpMemcpy(fnet, fnetd, 3*sizeof(double), tdpMemcpyDeviceToHost));
+    tdpAssert(tdpDeviceSynchronize());
+    tdpAssert(tdpMemcpy(fnet, fnetd, 3*sizeof(double), tdpMemcpyDeviceToHost));
+  }
 
   /* Compute global correction */
 
@@ -1077,14 +724,22 @@ __host__ int hydro_correct_momentum(hydro_t * hydro) {
 
   tdpMemcpy(fnetd, fnet, 3*sizeof(double), tdpMemcpyHostToDevice);
 
-  tdpLaunchKernel(hydro_correct_kernel_v, nblk, ntpb, 0, 0,
-		  ctxt->target, hydro->target, fnetd);
+  {
+    dim3 nblk = {};
+    dim3 ntpb = {};
+    cs_limits_t lim = {1, nlocal[X], 1, nlocal[Y], 1, nlocal[Z]};
+    kernel_3d_v_t k3v = kernel_3d_v(hydro->cs, lim, NSIMDVL);
 
-  tdpAssert(tdpPeekAtLastError());
-  tdpAssert(tdpDeviceSynchronize());
-  tdpFree(fnetd);
+    kernel_3d_launch_param(k3v.kiterations, &nblk, &ntpb);
 
-  kernel_ctxt_free(ctxt);
+    tdpLaunchKernel(hydro_correct_kernel_v, nblk, ntpb, 0, 0,
+		    k3v, hydro->target, fnetd);
+
+    tdpAssert(tdpPeekAtLastError());
+    tdpAssert(tdpDeviceSynchronize());
+  }
+
+  tdpAssert( tdpFree(fnetd) );
 
   return 0;
 }
@@ -1097,18 +752,16 @@ __host__ int hydro_correct_momentum(hydro_t * hydro) {
  *
  *****************************************************************************/
 
-__global__ void hydro_accumulate_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_accumulate_kernel(kernel_3d_t k3d, hydro_t * hydro,
 					double fnet[3]) {
 
-  int kindex;
-  int kiterations;
+  int kindex = 0;
   int tid;
 
   __shared__ double fx[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
   __shared__ double fy[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
   __shared__ double fz[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
 
-  assert(ktx);
   assert(hydro);
 
   tid = threadIdx.x;
@@ -1116,18 +769,15 @@ __global__ void hydro_accumulate_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
   fy[TARGET_PAD*tid] = 0.0;
   fz[TARGET_PAD*tid] = 0.0;
 
-  kiterations = kernel_iterations(ktx);
+  for_simt_parallel(kindex, k3d.kiterations, 1) {
 
-  for_simt_parallel(kindex, kiterations, 1) {
+    int ic = kernel_3d_ic(&k3d, kindex);
+    int jc = kernel_3d_jc(&k3d, kindex);
+    int kc = kernel_3d_kc(&k3d, kindex);
+    int index = kernel_3d_cs_index(&k3d, ic, jc, kc);
+    double f[3] = {0};
 
-    int ic, jc, kc, index;
-    double f[3];
-
-    ic = kernel_coords_ic(ktx, kindex);
-    jc = kernel_coords_jc(ktx, kindex);
-    kc = kernel_coords_kc(ktx, kindex);
-    index = kernel_coords_index(ktx, ic, jc, kc);
-    hydro_f_local(hydro, index, f); 
+    hydro_f_local(hydro, index, f);
 
     fx[TARGET_PAD*tid] += f[X];
     fy[TARGET_PAD*tid] += f[Y];
@@ -1163,39 +813,33 @@ __global__ void hydro_accumulate_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
  *
  *****************************************************************************/
 
-__global__ void hydro_accumulate_kernel_v(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_accumulate_kernel_v(kernel_3d_v_t k3v, hydro_t * hydro,
 					  double fnet[3]) {
 
-  int kindex;
-  int kiterations;
-  int tid;
+  int kindex = 0;
+  int tid = threadIdx.x;
 
   __shared__ double fx[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
   __shared__ double fy[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
   __shared__ double fz[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
 
-  assert(ktx);
   assert(hydro);
 
-  tid = threadIdx.x;
   fx[TARGET_PAD*tid] = 0.0;
   fy[TARGET_PAD*tid] = 0.0;
   fz[TARGET_PAD*tid] = 0.0;
 
-  kiterations = kernel_vector_iterations(ktx);
+  for_simt_parallel(kindex, k3v.kiterations, NSIMDVL) {
 
-  for_simt_parallel(kindex, kiterations, NSIMDVL) {
+    double f[3] = {0};
 
-    int index;
-    int ia, iv;
-    double f[3];
+    int index = k3v.kindex0 + kindex;
 
-    index = kernel_baseindex(ktx, kindex);
-
-    for (ia = 0; ia < 3; ia++) {
+    for (int ia = 0; ia < 3; ia++) {
+      int iv = 0;
       double ftmp = 0.0;
       for_simd_v_reduction(iv, NSIMDVL, +: ftmp) {
-        ftmp += hydro->f[addr_rank1(hydro->nsite, NHDIM, index+iv, ia)]; 
+        ftmp += hydro->force->data[addr_rank1(hydro->nsite,NHDIM,index+iv,ia)];
       }
       f[ia] = ftmp;
     }
@@ -1234,24 +878,19 @@ __global__ void hydro_accumulate_kernel_v(kernel_ctxt_t * ktx, hydro_t * hydro,
  *
  *****************************************************************************/
 
-__global__ void hydro_correct_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_correct_kernel(kernel_3d_t k3d, hydro_t * hydro,
 				     double fnet[3]) {
 
-  int kindex;
-  int kiterations;
-  int ic, jc, kc, index;
+  int kindex = 0;
 
-  assert(ktx);
   assert(hydro);
 
-  kiterations = kernel_iterations(ktx);
+  for_simt_parallel(kindex, k3d.kiterations, 1) {
 
-  for_simt_parallel(kindex, kiterations, 1) {
-
-    ic = kernel_coords_ic(ktx, kindex);
-    jc = kernel_coords_jc(ktx, kindex);
-    kc = kernel_coords_kc(ktx, kindex);
-    index = kernel_coords_index(ktx, ic, jc, kc);
+    int ic = kernel_3d_ic(&k3d, kindex);
+    int jc = kernel_3d_jc(&k3d, kindex);
+    int kc = kernel_3d_kc(&k3d, kindex);
+    int index = kernel_3d_cs_index(&k3d, ic, jc, kc);
 
     hydro_f_local_add(hydro, index, fnet);
   }
@@ -1267,30 +906,62 @@ __global__ void hydro_correct_kernel(kernel_ctxt_t * ktx, hydro_t * hydro,
  *
  *****************************************************************************/
 
-__global__ void hydro_correct_kernel_v(kernel_ctxt_t * ktx, hydro_t * hydro,
+__global__ void hydro_correct_kernel_v(kernel_3d_v_t k3v, hydro_t * hydro,
 				       double fnet[3]) {
 
-  int kindex;
-  int kiterations;
-  int index;
-  int ia;
-  int iv;
+  int kindex = 0;
 
-  assert(ktx);
   assert(hydro);
 
-  kiterations = kernel_vector_iterations(ktx);
+  for_simt_parallel(kindex, k3v.kiterations, NSIMDVL) {
 
-  for_simt_parallel(kindex, kiterations, NSIMDVL) {
+    int index = k3v.kindex0 +  kindex;
 
-    index = kernel_baseindex(ktx, kindex);
-
-    for (ia = 0; ia < 3; ia++) {
+    for (int ia = 0; ia < 3; ia++) {
+      int iv = 0;
       for_simd_v(iv, NSIMDVL) {
-	hydro->f[addr_rank1(hydro->nsite, NHDIM, index+iv, ia)] += fnet[ia]; 
+	int haddr = addr_rank1(hydro->nsite, NHDIM, index + iv, ia);
+	hydro->force->data[haddr] += fnet[ia];
       }
     }
   }
 
   return;
+}
+
+/*****************************************************************************
+ *
+ *  hydro_io_write
+ *
+ *  This is intended for configuration output ("rho" and "vel"). If other
+ *  fields are wanted, may wish to use field_io_write() directly.
+ *
+ *****************************************************************************/
+
+int hydro_io_write(hydro_t * hydro, int timestep, io_event_t * event) {
+
+  assert(hydro);
+
+  field_io_write(hydro->rho, timestep, event);
+  field_io_write(hydro->u,   timestep, event);
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  hydro_io_read
+ *
+ *  Configuration input is "rho" and "vel".
+ *
+ *****************************************************************************/
+
+int hydro_io_read(hydro_t * hydro, int timestep, io_event_t * event) {
+
+  assert(hydro);
+
+  field_io_read(hydro->rho, timestep, event);
+  field_io_read(hydro->u,   timestep, event);
+
+  return 0;
 }

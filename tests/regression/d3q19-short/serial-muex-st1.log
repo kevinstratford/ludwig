@@ -37,7 +37,7 @@ Interfacial width     =  1.13137e+00
 Using Cahn-Hilliard finite difference solver.
 Mobility M            =  1.25000e+00
 Order parameter noise = off
-Force calculation:      phi grad mu method
+Force calculation:      phi_gradmu
 
 System properties
 ----------------
@@ -56,7 +56,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -76,11 +76,6 @@ Hydrodynamics
 -------------
 Hydrodynamics: on
 
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
-
 Advection scheme order: 1
 Initialising droplet radius:      2.0000000e+00
 Initialising droplet amplitude:   1.0000000e+00
@@ -90,6 +85,9 @@ Initial conditions.
 Scalars - total mean variance min max
 [rho]       16384.00  1.00000000000  2.2204460e-16  1.00000000000  1.00000000000
 [phi]  1.6263778e+04  9.9266224e-01 5.8870003e-03 -9.4336416e-01 1.0000000e+00
+
+Free energy density - timestep total fluid
+[fed]              0 -1.5496142043e-03 -1.5496142043e-03
 
 Momentum - x y z
 [total   ]  0.0000000e+00  0.0000000e+00  0.0000000e+00

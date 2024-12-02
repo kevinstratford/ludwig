@@ -40,7 +40,6 @@ free_energy lc_droplet
 
 fd_advection_scheme_order 3
 fd_gradient_calculation 3d_7pt_fluid
-fd_force_divergence 1
 
 ###############################################################################
 #
@@ -89,8 +88,6 @@ lc_redshift_update 0
 lc_droplet_gamma 2.586
 lc_droplet_delta 0.25 
 lc_droplet_W -0.05
-
-lc_anchoring_method none
 
 ###############################################################################
 #

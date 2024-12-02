@@ -8,7 +8,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group
  *  and Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2021 The University of Edinburgh
+ *  (c) 2010-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -20,7 +20,6 @@
 
 #include "noise.h"
 #include "util.h"
-#include "field_s.h"
 #include "field_phi_init.h"
 
 /*****************************************************************************
@@ -30,16 +29,21 @@
  *  Droplet based on a profile phi(r) = phistar tanh (r-r0)/xi
  *  with r0 the centre of the system.
  *
+ *  NB. The original version of this had a centre which did not include
+ *      Lmin. There is therefore a switch which allows the (incorrect)
+ *      older version to be retained to avoid upsetting older tests.
+ *
  *****************************************************************************/
 
 int field_phi_init_drop(field_t * phi, double xi, double radius,
-			double phistar) {
+			double phistar, int is_centred) {
 
   int nlocal[3];
   int noffset[3];
   int index, ic, jc, kc;
 
   double ltot[3];
+  double lmin[3];
   double position[3];
   double centre[3];
   double phival, r, rxi0;
@@ -49,12 +53,13 @@ int field_phi_init_drop(field_t * phi, double xi, double radius,
   cs_nlocal(phi->cs, nlocal);
   cs_nlocal_offset(phi->cs, noffset);
   cs_ltot(phi->cs, ltot);
+  cs_lmin(phi->cs, lmin);
 
   rxi0 = 1.0/xi;
 
-  centre[X] = 0.5*ltot[X];
-  centre[Y] = 0.5*ltot[Y];
-  centre[Z] = 0.5*ltot[Z];
+  centre[X] = is_centred*lmin[X] + 0.5*ltot[X];
+  centre[Y] = is_centred*lmin[Y] + 0.5*ltot[Y];
+  centre[Z] = is_centred*lmin[Z] + 0.5*ltot[Z];
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
     for (jc = 1; jc <= nlocal[Y]; jc++) {
@@ -94,7 +99,7 @@ int field_phi_init_uniform(field_t * phi, double phi0) {
   cs_nlocal(phi->cs, nlocal);
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -114,7 +119,7 @@ int field_phi_init_uniform(field_t * phi, double phi0) {
  *  Initialise two blocks with interfaces at z = Lz/4 and z = 3Lz/4.
  *
  *****************************************************************************/
-			
+
 int field_phi_init_block(field_t * phi, double xi) {
 
   int nlocal[3];
@@ -135,7 +140,7 @@ int field_phi_init_block(field_t * phi, double xi) {
   z2 = 0.75*ltot[Z];
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -181,7 +186,7 @@ int field_phi_init_block_X(field_t * phi, double xi, double xwidth) {
   x2 = 0.5*(len[X] + xwidth);
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -229,7 +234,7 @@ int field_phi_init_block_Y(field_t * phi, double xi, double ywidth) {
   y2 = 0.5*(len[Y] + ywidth);
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -277,7 +282,7 @@ int field_phi_init_block_Z(field_t * phi, double xi, double zwidth) {
   z2 = 0.5*(len[Z] + zwidth);
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -324,7 +329,7 @@ int field_phi_init_layer_X(field_t * phi, double xi, double layer_size) {
   x1 = layer_size*len[X];
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -365,7 +370,7 @@ int field_phi_init_layer_Y(field_t * phi, double xi, double layer_size) {
   y1 = layer_size*len[Y];
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -406,7 +411,7 @@ int field_phi_init_layer_Z(field_t * phi, double xi, double layer_size) {
   z1 = layer_size*len[Z];
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -450,7 +455,7 @@ int field_phi_init_bath(field_t * phi) {
   xi0 = 1.13;
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) { 
+    for (jc = 1; jc <= nlocal[Y]; jc++) {
       for (kc = 1; kc <= nlocal[Z]; kc++) {
 
 	index = cs_index(phi->cs, ic, jc, kc);
@@ -492,8 +497,7 @@ int field_phi_init_spinodal(field_t * phi, int seed, double phi0, double amp) {
   cs = phi->cs;
   cs_nlocal(cs, nlocal);
 
-  noise_create(phi->pe, cs, &rng);
-  noise_init(rng, seed);
+  noise_create_seed(phi->pe, cs, seed, &rng);
 
   for (ic = 1; ic <= nlocal[X]; ic++) {
     for (jc = 1; jc <= nlocal[Y]; jc++) {
@@ -508,7 +512,7 @@ int field_phi_init_spinodal(field_t * phi, int seed, double phi0, double amp) {
     }
   }
 
-  noise_free(rng);
+  noise_free(&rng);
 
   return 0;
 }
@@ -537,7 +541,6 @@ int field_phi_init_spinodal_patches(field_t * phi, int seed, int patch,
   int ip, jp, kp;
   int nlocal[3];
   int ipatch, jpatch, kpatch;
-  int count = 0;
 
   double phi1;
   double ran_uniform;
@@ -548,8 +551,7 @@ int field_phi_init_spinodal_patches(field_t * phi, int seed, int patch,
 
   cs_nlocal(phi->cs, nlocal);
 
-  noise_create(phi->pe, phi->cs, &rng);
-  noise_init(rng, seed);
+  noise_create_seed(phi->pe, phi->cs, seed, &rng);
 
   for (ic = 1; ic <= nlocal[X]; ic += patch) {
     for (jc = 1; jc <= nlocal[Y]; jc += patch) {
@@ -572,7 +574,6 @@ int field_phi_init_spinodal_patches(field_t * phi, int seed, int patch,
 
 	      index = cs_index(phi->cs, ip, jp, kp);
 	      field_scalar_set(phi, index, phi1);
-	      count += 1;
 	    }
 	  }
 	}
@@ -582,9 +583,7 @@ int field_phi_init_spinodal_patches(field_t * phi, int seed, int patch,
     }
   }
 
-  noise_free(rng);
-
-  assert(count == nlocal[X]*nlocal[Y]*nlocal[Z]);
+  noise_free(&rng);
 
   return 0;
 }
@@ -614,7 +613,7 @@ int field_phi_init_emulsion(field_t * phi, double xi, double radius,
   int PosY[N_drops];
   int PosZ[N_drops];
   int PosY0, PosZ0;
-  double Rclosest; 
+  double Rclosest;
 
   double r;
   int ny, nz;  /* number of drops on each dimension */

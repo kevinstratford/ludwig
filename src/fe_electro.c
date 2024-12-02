@@ -27,7 +27,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2013-2018 The University of Edinburgh
+ *  (c) 2013-2023 The University of Edinburgh
  *
  *  Contributing authors:
  *  Oliver Henrich  (ohenrich@epcc.ed.ac.uk)
@@ -43,7 +43,6 @@
 #include "pe.h"
 #include "physics.h"
 #include "util.h"
-#include "psi_s.h"
 #include "psi_gradients.h"
 #include "fe_electro.h"
 
@@ -127,10 +126,16 @@ __host__ int fe_electro_create(pe_t * pe, psi_t * psi, fe_electro_t ** pobj) {
     fe->target = fe;
   }
   else {
-    fe_vt_t * vt;
-    /* Device implementation pending */
+    /* Allow this to go forward on the basis that no device calls are
+     * available. */
+    fe_vt_t * vt = NULL;
+
+    tdpAssert(tdpMalloc((void **) &fe->target, sizeof(fe_electro_t)));
+    tdpMemset(fe->target, 0, sizeof(fe_electro_t));
+
     tdpGetSymbolAddress((void **) &vt, tdpSymbol(fe_electro_dvt));
-    pe_fatal(pe, "No device implementation for fe_electro\n");
+    tdpAssert(tdpMemcpy(&fe->target->super.func, &vt, sizeof(fe_vt_t *),
+			tdpMemcpyHostToDevice));
   }
 
   *pobj = fe;
@@ -146,7 +151,12 @@ __host__ int fe_electro_create(pe_t * pe, psi_t * psi, fe_electro_t ** pobj) {
 
 __host__ int fe_electro_free(fe_electro_t * fe) {
 
+  int ndevice = 0;
+
   assert(fe);
+
+  tdpGetDeviceCount(&ndevice);
+  if (ndevice > 0) tdpAssert(tdpFree(fe->target));
 
   if (fe->mu_ref) free(fe->mu_ref);
   free(fe);
@@ -299,7 +309,7 @@ int fe_electro_stress(fe_electro_t * fe, int index, double s[3][3]) {
   reunit = 1.0/eunit;
 
   psi_epsilon(fe->psi, &epsilon);
-  psi_electric_field_d3qx(fe->psi, index, e);
+  psi_electric_field(fe->psi, index, e);
 
   e2 = 0.0;
 
@@ -352,7 +362,7 @@ int fe_electro_stress_ex(fe_electro_t * fe, int index, double s[3][3]) {
   reunit = 1.0/eunit;
 
   psi_epsilon(fe->psi, &epsilon);
-  psi_electric_field_d3qx(fe->psi, index, e);
+  psi_electric_field(fe->psi, index, e);
 
   e2 = 0.0;
 

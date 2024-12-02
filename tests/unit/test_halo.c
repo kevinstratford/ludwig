@@ -8,7 +8,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2017 The University of Edinburgh
+ *  (c) 2010-2022 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -23,13 +23,13 @@
 
 #include "pe.h"
 #include "coords.h"
-#include "model.h"
+#include "lb_data.h"
 #include "control.h"
 #include "tests.h"
 
-int do_test_const_blocks(void);
-int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo);
-int do_test_halo(pe_t * pe, cs_t * cs, int dim, const lb_halo_enum_t halo);
+int test_lb_halo1(pe_t * pe, cs_t * cs, int ndim, int nvel);
+int do_test_halo_null(pe_t * pe, cs_t * cs, const lb_data_options_t * opts);
+int do_test_halo(pe_t * pe, cs_t * cs, int dim, const lb_data_options_t * opts);
 
 /*****************************************************************************
  *
@@ -46,21 +46,12 @@ int test_halo_suite(void) {
   cs_create(pe, &cs);
   cs_init(cs);
 
-  do_test_const_blocks();
-
-  do_test_halo_null(pe, cs, LB_HALO_FULL);
-  do_test_halo_null(pe, cs, LB_HALO_REDUCED);
-
-  do_test_halo(pe, cs, X, LB_HALO_FULL);
-  do_test_halo(pe, cs, Y, LB_HALO_FULL);
-  do_test_halo(pe, cs, Z, LB_HALO_FULL);
-
-  if (pe_mpi_size(pe) == 1) {
-    do_test_halo(pe, cs, X, LB_HALO_REDUCED);
-    do_test_halo(pe, cs, Y, LB_HALO_REDUCED);
-    do_test_halo(pe, cs, Z, LB_HALO_REDUCED);
-  }
-
+  /* Use a 2d system for ndim = 2, nvel = 9 */
+  test_lb_halo1(pe, cs, 3, 15);
+  pe_info(pe, "PASS     ./unit/test_halo 15\n");
+  test_lb_halo1(pe, cs, 3, 19);
+  pe_info(pe, "PASS     ./unit/test_halo 19\n");
+  test_lb_halo1(pe, cs, 3, 27);
 
   pe_info(pe, "PASS     ./unit/test_halo\n");
   cs_free(cs);
@@ -69,32 +60,47 @@ int test_halo_suite(void) {
   return 0;
 }
 
-int do_test_const_blocks(void) {
+/*****************************************************************************
+ *
+ *  test_lb_halo
+ *
+ *****************************************************************************/
 
-#ifdef TEST_TO_BE_REMOVED_WITH_GLOBAL_SYMBOLS
-  int i, k;
+int test_lb_halo1(pe_t * pe, cs_t * cs, int ndim, int nvel) {
 
-  for (i = 0; i < CVXBLOCK; i++) {
-    for (k = 0; k < xblocklen_cv[i]; k++) {
-      test_assert(cv[xdisp_fwd_cv[i] + k][X] == +1);
-      test_assert(cv[xdisp_bwd_cv[i] + k][X] == -1);
-    }
-  }
+  lb_data_options_t opts = lb_data_options_default();
 
-  for (i = 0; i < CVYBLOCK; i++) {
-    for (k = 0; k < yblocklen_cv[i]; k++) {
-      test_assert(cv[ydisp_fwd_cv[i] + k][Y] == +1);
-      test_assert(cv[ydisp_bwd_cv[i] + k][Y] == -1);
-    }
-  }
+  opts.ndim  = ndim;
+  opts.nvel  = nvel;
+  opts.ndist = 1;
+  opts.halo  = LB_HALO_TARGET;
 
-  for (i = 0; i < CVZBLOCK; i++) {
-    for (k = 0; k < zblocklen_cv[i]; k++) {
-      test_assert(cv[zdisp_fwd_cv[i] + k][Z] == +1);
-      test_assert(cv[zdisp_bwd_cv[i] + k][Z] == -1);
-    }
-  }
-#endif
+  do_test_halo_null(pe, cs, &opts);
+  do_test_halo(pe, cs, X, &opts);
+  do_test_halo(pe, cs, Y, &opts);
+  do_test_halo(pe, cs, Z, &opts);
+
+  opts.ndist = 1;
+  opts.halo  = LB_HALO_OPENMP_FULL;
+
+  do_test_halo_null(pe, cs, &opts);
+  do_test_halo(pe, cs, X, &opts);
+  do_test_halo(pe, cs, Y, &opts);
+  do_test_halo(pe, cs, Z, &opts);
+
+  opts.ndist = 1;
+  opts.halo  = LB_HALO_OPENMP_REDUCED;
+
+  do_test_halo_null(pe, cs, &opts);
+
+  opts.ndist = 2;
+  opts.halo = LB_HALO_TARGET;
+
+  do_test_halo_null(pe, cs, &opts);
+  do_test_halo(pe, cs, X, &opts);
+  do_test_halo(pe, cs, Y, &opts);
+  do_test_halo(pe, cs, Z, &opts);
+
   return 0;
 }
 
@@ -107,31 +113,24 @@ int do_test_const_blocks(void) {
  *
  *****************************************************************************/
 
-int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo) {
+int do_test_halo_null(pe_t * pe, cs_t * cs, const lb_data_options_t * opts) {
 
   int nlocal[3], n[3];
   int index, nd, p;
-  int ndist = 2;
-  int rank;
   int nhalo;
   int nextra;
   double f_actual;
 
-  MPI_Comm comm = MPI_COMM_WORLD;
   lb_t * lb = NULL;
 
   assert(pe);
   assert(cs);
+  assert(opts);
 
   cs_nhalo(cs, &nhalo);
   nextra = nhalo - 1;
 
-  MPI_Comm_rank(comm, &rank);
-
-  lb_create(pe, cs, &lb);
-  lb_ndist_set(lb, ndist);
-  lb_init(lb);
-  lb_halo_set(lb, halo);
+  lb_data_create(pe, cs, opts, &lb);
 
   cs_nlocal(cs, nlocal);
 
@@ -143,7 +142,7 @@ int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo) {
 
 	index = cs_index(cs, n[X], n[Y], n[Z]);
 
-	for (nd = 0; nd < ndist; nd++) {
+	for (nd = 0; nd < lb->ndist; nd++) {
 	  for (p = 0; p < lb->model.nvel; p++) {
 	    lb_f_set(lb, index, p, nd, 1.0);
 	  }
@@ -161,7 +160,7 @@ int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo) {
 
 	index = cs_index(cs, n[X], n[Y], n[Z]);
 
-	for (nd = 0; nd < ndist; nd++) {
+	for (nd = 0; nd < lb->ndist; nd++) {
 	  for (p = 0; p < lb->model.nvel; p++) {
 	    lb_f_set(lb, index, p, nd, 0.0);
 	  }
@@ -183,7 +182,7 @@ int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo) {
 
 	index = cs_index(cs, n[X], n[Y], n[Z]);
 
-	for (nd = 0; nd < ndist; nd++) {
+	for (nd = 0; nd < lb->ndist; nd++) {
 	  for (p = 0; p < lb->model.nvel; p++) {
 	    lb_f(lb, index, p, nd, &f_actual);
 
@@ -212,15 +211,15 @@ int do_test_halo_null(pe_t * pe, cs_t * cs, lb_halo_enum_t halo) {
  *
  *****************************************************************************/
 
-int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
+int do_test_halo(pe_t * pe, cs_t * cs, int dim, const lb_data_options_t * opts) {
 
+  int ndevice = 0;
   int nhalo;
   int nlocal[3], n[3];
   int offset[3];
   int mpi_cartsz[3];
   int mpi_cartcoords[3];
   int nd;
-  int ndist = 2;
   int nextra;
   int index, p, d;
 
@@ -231,12 +230,11 @@ int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
   assert(pe);
   assert(cs);
   assert(dim == X || dim == Y || dim == Z);
+  assert(opts);
 
+  tdpGetDeviceCount(&ndevice);
 
-  lb_create(pe, cs, &lb);
-  lb_ndist_set(lb, ndist);
-  lb_init(lb);
-  lb_halo_set(lb, halo);
+  lb_data_create(pe, cs, opts, &lb);
 
   cs_nhalo(cs, &nhalo);
   nextra = nhalo;
@@ -255,7 +253,7 @@ int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
 
 	index = cs_index(cs, n[X], n[Y], n[Z]);
 
-	for (nd = 0; nd < ndist; nd++) {
+	for (nd = 0; nd < lb->ndist; nd++) {
 	  for (p = 0; p < lb->model.nvel; p++) {
 	    lb_f_set(lb, index, p, nd, -1.0);
 	  }
@@ -278,7 +276,7 @@ int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
 	    n[Y] <= nhalo || n[Y] > nlocal[Y] - nhalo ||
 	    n[Z] <= nhalo || n[Z] > nlocal[Z] - nhalo) {
 
-	  for (nd = 0; nd < ndist; nd++) {
+	  for (nd = 0; nd < lb->ndist; nd++) {
 	    for (p = 0; p < lb->model.nvel; p++) {
 	      lb_f_set(lb, index, p, nd, 1.0*(offset[dim] + n[dim]));
 	    }
@@ -291,7 +289,11 @@ int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
 
   lb_memcpy(lb, tdpMemcpyHostToDevice);
   lb_halo(lb);
-  lb_memcpy(lb, tdpMemcpyDeviceToHost);
+
+  /* Don't overwrite the host version if not device swap */
+  if (ndevice && lb->opts.halo == LB_HALO_TARGET) {
+    lb_memcpy(lb, tdpMemcpyDeviceToHost);
+  }
 
   /* Check the results (all sites for distribution halo).
    * The halo regions should contain a copy of the above, while the
@@ -306,7 +308,7 @@ int do_test_halo(pe_t * pe, cs_t * cs, int dim, lb_halo_enum_t halo) {
 
 	index = cs_index(cs, n[X], n[Y], n[Z]);
 
-	for (nd = 0; nd < ndist; nd++) {
+	for (nd = 0; nd < lb->ndist; nd++) {
 	  for (d = 0; d < 3; d++) {
 
 	    /* 'Left' side */

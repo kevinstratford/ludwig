@@ -36,7 +36,7 @@ Interfacial width     =  1.13137e+00
 Using Cahn-Hilliard finite difference solver.
 Mobility M            =  1.50000e-01
 Order parameter noise = off
-Force calculation:      divergence method
+Force calculation:      stress_divergence
 
 System properties
 ----------------
@@ -54,7 +54,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -74,11 +74,6 @@ Hydrodynamics
 -------------
 Hydrodynamics: on
 
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
-
 Advection scheme order:  1 (default)
 Initialisng phi as block
 
@@ -94,7 +89,6 @@ Output format:                ascii
 Single file read flag:        0
 
 Requested one colloid via input:
-colloid_one                   default
 colloid_one_a0                2.3000000e+00
 colloid_one_ah                2.3000000e+00
 colloid_one_r                 1.6130000e+01  1.6470000e+01  1.6000000e+01
@@ -119,6 +113,9 @@ Initial conditions.
 Scalars - total mean variance min max
 [rho]       65484.00  1.00000000000  2.2204460e-16  1.00000000000  1.00000000000
 [phi]  0.0000000e+00  0.0000000e+00 9.2965928e-01 -1.0000000e+00 1.0000000e+00
+
+Free energies - timestep f v f/v f_s a f_s/a
+[fe]              0 -9.3481842103e+02  6.5484000000e+04 -1.4275524113e-02  0.0000000000e+00
 
 Momentum - x y z
 [total   ]  0.0000000e+00  0.0000000e+00  0.0000000e+00

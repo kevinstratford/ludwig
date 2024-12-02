@@ -19,7 +19,6 @@ N_cycles 100
 
 size 18_18_18
 grid 2_2_1
-reduced_halo no
 
 ##############################################################################
 #
@@ -31,8 +30,8 @@ fluid_rho0     0.864
 viscosity      0.024192
 viscosity_bulk 0.024192
 
-isothermal_fluctuations on
-temperature 0.00012
+lb_fluctuations  yes
+temperature      0.00012
 
 ##############################################################################
 #

@@ -6,13 +6,13 @@
  *
  *  (Porous media should be considered as a separate case).
  *
- * Edinburgh Soft Matter and Statistical Physics Group and
- * Edinburgh Parallel Computing Centre
+ *  Edinburgh Soft Matter and Statistical Physics Group and
+ *  Edinburgh Parallel Computing Centre
  *
- * (c) 2020-2021 The University of Edinburgh
+ *  (c) 2020-2024 The University of Edinburgh
  *
- * Contributing authors:
- * Kevin Stratford (kevin@epcc.ed.ac.uk)
+ *  Contributing authors:
+ *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
  *****************************************************************************/
 
@@ -23,6 +23,7 @@
 
 #include "pe.h"
 #include "wall.h"
+#include "util.h"
 #include "tests.h"
 
 __host__ int wall_link_normal(wall_t * wall, int n, int wn[3]);
@@ -36,6 +37,7 @@ __host__ int test_wall_link_slip(pe_t * pe, cs_t * cs);
 __host__ int test_wall_commit1(pe_t * pe, cs_t * cs);
 __host__ int test_wall_commit2(pe_t * pe, cs_t * cs);
 
+__host__ int test_wall_lubr_drag(void);
 
 /*****************************************************************************
  *
@@ -64,6 +66,8 @@ __host__ int test_wall_suite(void) {
 
   test_wall_commit1(pe, cs);
   test_wall_commit2(pe, cs);
+
+  test_wall_lubr_drag();
 
   pe_info(pe, "PASS     ./unit/test_wall\n");
 
@@ -156,25 +160,27 @@ __host__ int test_wall_slip(void) {
 /*****************************************************************************
  *
  *  test_wall_link_normal
- * 
+ *
  *  This is independent of the LB model.
  *
  *****************************************************************************/
 
 __host__ int test_wall_link_normal(pe_t * pe, cs_t * cs) {
 
-  lb_t * lb = NULL;
   map_t * map = NULL;
   wall_t * wall = NULL;
   wall_param_t param = {0};
 
+  map_options_t mapopts = map_options_default();
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
+
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  lb_init(lb);
+  lb_data_create(pe, cs, &options, &lb);
 
-  map_create(pe, cs, 1, &map);
+  map_create(pe, cs, &mapopts, &map);
   wall_create(pe, cs, map, lb, &wall);
 
   /* This will probe all possible normal directions for the model */
@@ -183,7 +189,7 @@ __host__ int test_wall_link_normal(pe_t * pe, cs_t * cs) {
   param.isboundary[Y] = 1;
   param.isboundary[Z] = 1;
   wall_commit(wall, &param);
-  
+
   for (int n = 0; n < wall->nlink; n++) {
 
     int wn[3] = {0};
@@ -220,7 +226,7 @@ __host__ int test_wall_link_normal(pe_t * pe, cs_t * cs) {
   }
 
   wall_free(wall);
-  map_free(map);
+  map_free(&map);
   lb_free(lb);
 
   return 0;
@@ -234,18 +240,20 @@ __host__ int test_wall_link_normal(pe_t * pe, cs_t * cs) {
 
 __host__ int test_wall_link_slip_direction(pe_t * pe, cs_t * cs) {
 
-  lb_t * lb = NULL;
   map_t * map = NULL;
   wall_t * wall = NULL;
   wall_param_t param = {0};
 
+  map_options_t mapopts = map_options_default();
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
+
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  lb_init(lb);
+  lb_data_create(pe, cs, &options, &lb);
 
-  map_create(pe, cs, 1, &map);
+  map_create(pe, cs, &mapopts, &map);
   wall_create(pe, cs, map, lb, &wall);
 
   /* This will probe all possible normal directions for the model */
@@ -254,7 +262,7 @@ __host__ int test_wall_link_slip_direction(pe_t * pe, cs_t * cs) {
   param.isboundary[Y] = 1;
   param.isboundary[Z] = 1;
   wall_commit(wall, &param);
-  
+
   for (int n = 0; n < wall->nlink; n++) {
 
     int p = wall->linkp[n];
@@ -280,7 +288,7 @@ __host__ int test_wall_link_slip_direction(pe_t * pe, cs_t * cs) {
   }
 
   wall_free(wall);
-  map_free(map);
+  map_free(&map);
   lb_free(lb);
 
   return 0;
@@ -294,18 +302,20 @@ __host__ int test_wall_link_slip_direction(pe_t * pe, cs_t * cs) {
 
 __host__ int test_wall_link_slip(pe_t * pe, cs_t * cs) {
 
-  lb_t * lb = NULL;
   map_t * map = NULL;
   wall_t * wall = NULL;
   wall_param_t param = {0};
 
+  map_options_t mapopts = map_options_default();
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
+
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  lb_init(lb);
+  lb_data_create(pe, cs, &options, &lb);
 
-  map_create(pe, cs, 1, &map);
+  map_create(pe, cs, &mapopts, &map);
   wall_create(pe, cs, map, lb, &wall);
 
   /* This will probe all possible normal directions for the model */
@@ -314,12 +324,12 @@ __host__ int test_wall_link_slip(pe_t * pe, cs_t * cs) {
   param.isboundary[Y] = 1;
   param.isboundary[Z] = 1;
   wall_commit(wall, &param);
-  
+
   for (int n = 0; n < wall->nlink; n++) {
 
     int s = wall_link_slip(wall, n);
     int p = wall->linkp[n];
-      
+
     assert(WALL_NO_SLIP <= s && s < WALL_SLIP_MAX);
 
     /* Make sure these are at least consistent */
@@ -333,7 +343,7 @@ __host__ int test_wall_link_slip(pe_t * pe, cs_t * cs) {
   }
 
   wall_free(wall);
-  map_free(map);
+  map_free(&map);
   lb_free(lb);
 
   return 0;
@@ -347,18 +357,20 @@ __host__ int test_wall_link_slip(pe_t * pe, cs_t * cs) {
 
 __host__ int test_wall_commit1(pe_t * pe, cs_t * cs) {
 
-  lb_t * lb = NULL;
   map_t * map = NULL;
   wall_t * wall = NULL;
   wall_param_t param = {0};
 
+  map_options_t mapopts = map_options_default();
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
+
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  lb_init(lb);
+  lb_data_create(pe, cs, &options, &lb);
 
-  map_create(pe, cs, 1, &map);
+  map_create(pe, cs, &mapopts, &map);
   wall_create(pe, cs, map, lb, &wall);
 
   /* This will probe all possible normal directions for the model */
@@ -380,7 +392,7 @@ __host__ int test_wall_commit1(pe_t * pe, cs_t * cs) {
   assert(wall->links == NULL);
 
   wall_free(wall);
-  map_free(map);
+  map_free(&map);
   lb_free(lb);
 
   return 0;
@@ -394,18 +406,20 @@ __host__ int test_wall_commit1(pe_t * pe, cs_t * cs) {
 
 __host__ int test_wall_commit2(pe_t * pe, cs_t * cs) {
 
-  lb_t * lb = NULL;
   map_t * map = NULL;
   wall_t * wall = NULL;
   wall_param_t param = {0};
 
+  map_options_t mapopts = map_options_default();
+  lb_data_options_t options = lb_data_options_default();
+  lb_t * lb = NULL;
+
   assert(pe);
   assert(cs);
 
-  lb_create(pe, cs, &lb);
-  lb_init(lb);
+  lb_data_create(pe, cs, &options, &lb);
 
-  map_create(pe, cs, 1, &map);
+  map_create(pe, cs, &mapopts, &map);
   wall_create(pe, cs, map, lb, &wall);
 
   /* This will probe all possible normal directions for the model */
@@ -428,8 +442,46 @@ __host__ int test_wall_commit2(pe_t * pe, cs_t * cs) {
   assert(wall->links != NULL);
 
   wall_free(wall);
-  map_free(map);
+  map_free(&map);
   lb_free(lb);
 
   return 0;
+}
+
+/*****************************************************************************
+ *
+ *  test_wall_lubr_drag
+ *
+ *****************************************************************************/
+
+__host__ int test_wall_lubr_drag(void) {
+
+  int ifail = 0;
+  PI_DOUBLE(pi);
+
+  {
+    /* h > hc => zeta = 0. */
+    double eta = 0.1;
+    double ah  = 1.25;
+    double h   = 1.2;
+    double hc  = 1.0;
+    double zeta = wall_lubr_drag(eta, ah, h, hc);
+
+    if (fabs(zeta) >= DBL_EPSILON) ifail = 1;
+    assert(ifail == 0);
+  }
+  {
+    /* h < hc */
+    double eta = 0.1;
+    double ah  = 1.25;
+    double h   = 1.0;
+    double hc  = 1.2;
+    double zeta = wall_lubr_drag(eta, ah, h, hc);
+    if (fabs(zeta - -6.0*pi*eta*ah*ah*(1.0/h - 1.0/hc)) >= DBL_EPSILON) {
+      ifail = -1;
+    }
+    assert(ifail == 0);
+  }
+
+  return ifail;
 }

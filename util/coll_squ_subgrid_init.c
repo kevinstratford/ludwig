@@ -36,6 +36,7 @@
 #include "../src/coords.h"
 #include "../src/colloid.h"
 #include "../src/util.h"
+#include "../src/util_fopen.h"
 
 enum format {ASCII, BINARY};
 #define NTRYMAX 10000
@@ -81,7 +82,9 @@ int main(int argc, char ** argv) {
   double q1 = 0.0;     /* negative charge */
   double b1 = 0.00;
   double b2 = 0.00;
-  int type = COLLOID_TYPE_SUBGRID;
+
+  int bc = COLLOID_BC_SUBGRID;
+  int shape = COLLOID_SHAPE_SPHERE;
 
   colloid_state_t * state;
   pe_t * pe;
@@ -93,19 +96,24 @@ int main(int argc, char ** argv) {
 
   MPI_Init(&argc, &argv);
 
-  for (optind = 1; optind < argc && argv[optind][0] == '-'; optind++) {
+  if ((argc-1) % 2 != 0) {
+    printf("Usage: %s [-n Monte-Carlo-moves] [-v colume-fraction]\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
+
+  for (optind = 1; optind < argc && argv[optind][0] == '-'; optind += 2) {
     switch (argv[optind][1]) {
     case 'n':
-      mc = atoi(argv[++optind]);
+      mc = atoi(argv[optind+1]);
       printf("%s: option -n sets mc = %d\n", argv[0], mc);
       break;
     case 'v':
-      vf = atof(argv[++optind]);
+      vf = atof(argv[optind+1]);
       printf("%s: option -v sets vf = %f\n", argv[0], vf);
       break;
     default:
       fprintf(stderr, "Unrecognised option: %s\n", argv[optind]);
-      fprintf(stderr, "Usage: %s [-ahv]\n", argv[0]);
+      fprintf(stderr, "Usage: %s [-nv]\n", argv[0]);
       exit(EXIT_FAILURE);
     }   
   }
@@ -141,8 +149,9 @@ int main(int argc, char ** argv) {
     state[n].m[X] = 1.0;
     state[n].m[Y] = 0.0;
     state[n].m[Z] = 0.0;
-    state[n].type = type;
-    if (type == COLLOID_TYPE_SUBGRID) state[n].al = al;
+    state[n].bc = bc;
+    state[n].shape = shape;
+    if (bc == COLLOID_BC_SUBGRID) state[n].al = al;
     state[n].rng = 1 + n;
   }
 
@@ -577,7 +586,7 @@ void colloid_init_write_file(const int nc, const colloid_state_t * pc,
   const char * filename = "config.cds.init.001-001";
   FILE * fp;
 
-  fp = fopen(filename, "w");
+  fp = util_fopen(filename, "w");
   if (fp == NULL) {
     printf("Could not open %s\n", filename);
     exit(0);

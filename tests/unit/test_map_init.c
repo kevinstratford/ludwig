@@ -4,7 +4,10 @@
  *
  *  Test of map initialisations is relevant.
  *
- *  (c) 2021 The University of Edinburgh
+ *  Edinburgh Soft Matter and Statistical Physics Group and
+ *  Edinburgh Parallel Comuting Centre
+ *
+ *  (c) 2021-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -85,8 +88,8 @@ int test_map_init_status_wall(pe_t * pe) {
 
 int test_map_init_status_wall_x(pe_t * pe, cs_t * cs) {
 
-  int ntotal[3]  = {};
-  int noffset[3] = {};
+  int ntotal[3]  = {0};
+  int noffset[3] = {0};
 
   assert(pe);
   assert(cs);
@@ -95,10 +98,10 @@ int test_map_init_status_wall_x(pe_t * pe, cs_t * cs) {
   cs_nlocal_offset(cs, noffset);
 
   {
+    map_options_t opts = map_options_default();
     map_t * map = NULL;
-    int ndata = 0;
 
-    map_create(pe, cs, ndata, &map);
+    map_create(pe, cs, &opts, &map);
     map_init_status_wall(map, X);
 
     {
@@ -131,7 +134,7 @@ int test_map_init_status_wall_x(pe_t * pe, cs_t * cs) {
       assert(vol == (ntotal[X]-2)*ntotal[Y]*ntotal[Z]);
     }
 
-    map_free(map);
+    map_free(&map);
   }
 
   return 0;
@@ -145,9 +148,9 @@ int test_map_init_status_wall_x(pe_t * pe, cs_t * cs) {
 
 int test_map_init_status_wall_y(pe_t * pe, cs_t * cs) {
 
-  int ntotal[3] = {};
-  int nlocal[3] = {};
-  int noffset[3] = {};
+  int ntotal[3] = {0};
+  int nlocal[3] = {0};
+  int noffset[3] = {0};
 
   assert(pe);
   assert(cs);
@@ -157,10 +160,10 @@ int test_map_init_status_wall_y(pe_t * pe, cs_t * cs) {
   cs_nlocal_offset(cs, noffset);
 
   {
+    map_options_t opts = map_options_default();
     map_t * map = NULL;
-    int ndata = 0;
 
-    map_create(pe, cs, ndata, &map);
+    map_create(pe, cs, &opts, &map);
     map_init_status_wall(map, Y);
 
     {
@@ -178,7 +181,7 @@ int test_map_init_status_wall_y(pe_t * pe, cs_t * cs) {
       assert(vol == ntotal[X]*2*ntotal[Z]);
     }
 
-    map_free(map);
+    map_free(&map);
   }
 
   return 0;
@@ -192,9 +195,9 @@ int test_map_init_status_wall_y(pe_t * pe, cs_t * cs) {
 
 int test_map_init_status_wall_z(pe_t * pe, cs_t * cs) {
 
-  int ntotal[3] = {};
-  int nlocal[3] = {};
-  int noffset[3] = {};
+  int ntotal[3] = {0};
+  int nlocal[3] = {0};
+  int noffset[3] = {0};
 
   assert(pe);
   assert(cs);
@@ -204,10 +207,10 @@ int test_map_init_status_wall_z(pe_t * pe, cs_t * cs) {
   cs_nlocal_offset(cs, noffset);
 
   {
+    map_options_t opts = map_options_default();
     map_t * map = NULL;
-    int ndata = 0;
 
-    map_create(pe, cs, ndata, &map);
+    map_create(pe, cs, &opts, &map);
     map_init_status_wall(map, Z);
 
     {
@@ -225,7 +228,7 @@ int test_map_init_status_wall_z(pe_t * pe, cs_t * cs) {
       assert(vol == ntotal[X]*ntotal[Y]*2);
     }
 
-    map_free(map);
+    map_free(&map);
   }
 
   return 0;
@@ -255,20 +258,22 @@ int test_map_init_status_circle_odd(pe_t * pe) {
 
   int ntotal[3] = {19, 19, 1}; /* System size: odd numbers */
   cs_t * cs = NULL;
+
+  map_options_t opts = map_options_default();
   map_t * map = NULL;
 
   cs_create(pe, &cs);
   cs_ntotal_set(cs, ntotal);
   cs_init(cs);
 
-  map_create(pe, cs, 0, &map);
+  map_create(pe, cs, &opts, &map);
   map_init_status_circle_xy(map);
 
   {
     /* All the edges at least should be solid (no 'leaks') */
 
-    int noffset[3] = {};
-    int nlocal[3] = {};
+    int noffset[3] = {0};
+    int nlocal[3] = {0};
     int status1 = -1;
     int status2 = -1;
 
@@ -310,7 +315,7 @@ int test_map_init_status_circle_odd(pe_t * pe) {
     assert((nfluid + nsolid) == ntotal[X]*ntotal[Y]);
   }
 
-  map_free(map);
+  map_free(&map);
   cs_free(cs);
 
   return 0;
@@ -326,13 +331,15 @@ int test_map_init_status_circle_even(pe_t * pe) {
 
   int ntotal[3] = {18, 18, 2}; /* System size: even numbers */
   cs_t * cs = NULL;
+
+  map_options_t opts = map_options_default();
   map_t * map = NULL;
 
   cs_create(pe, &cs);
   cs_ntotal_set(cs, ntotal);
   cs_init(cs);
 
-  map_create(pe, cs, 0, &map);
+  map_create(pe, cs, &opts, &map);
   map_init_status_circle_xy(map);
   {
     /* Just check the global volumes ... */
@@ -347,7 +354,7 @@ int test_map_init_status_circle_even(pe_t * pe) {
     assert((nfluid + nsolid) == ntotal[X]*ntotal[Y]*ntotal[Z]);
   }
 
-  map_free(map);
+  map_free(&map);
   cs_free(cs);
 
   return 0;
@@ -368,10 +375,11 @@ int test_map_init_status_circle_even(pe_t * pe) {
 int test_map_init_status_body_centred_cubic(pe_t * pe) {
 
   int ierr = 0;
-
   cs_t * cs = NULL;
+
+  map_options_t opts = map_options_default();
   map_t * map = NULL;
-  int ndata = 0;
+
 
   /* Recall we must have system size a multiple of the lattice constant */
   int acell = 20;
@@ -383,7 +391,7 @@ int test_map_init_status_body_centred_cubic(pe_t * pe) {
   cs_ntotal_set(cs, ntotal);
   cs_init(cs);
 
-  map_create(pe, cs, ndata, &map);
+  map_create(pe, cs, &opts, &map);
   map_init_status_body_centred_cubic(map, acell);
 
   {
@@ -400,7 +408,7 @@ int test_map_init_status_body_centred_cubic(pe_t * pe) {
     if (fabs(sf - pi*sqrt(3.0)/8.0) >= 0.01) ierr = -1;
   }
 
-  map_free(map);
+  map_free(&map);
   cs_free(cs);
 
   return ierr;
@@ -417,10 +425,11 @@ int test_map_init_status_body_centred_cubic(pe_t * pe) {
 int test_map_init_status_face_centred_cubic(pe_t * pe) {
 
   int ierr = 0;
-
   cs_t * cs = NULL;
+
+  map_options_t opts = map_options_default();
   map_t * map = NULL;
-  int ndata = 0;
+
 
   /* Recall we must have system size a multiple of the lattice constant */
   int acell = 20;
@@ -432,7 +441,7 @@ int test_map_init_status_face_centred_cubic(pe_t * pe) {
   cs_ntotal_set(cs, ntotal);
   cs_init(cs);
 
-  map_create(pe, cs, ndata, &map);
+  map_create(pe, cs, &opts, &map);
   map_init_status_face_centred_cubic(map, acell);
 
   {
@@ -449,7 +458,7 @@ int test_map_init_status_face_centred_cubic(pe_t * pe) {
     if (fabs(sf - pi*sqrt(2.0)/6.0) >= 0.01) ierr = -1;
   }
 
-  map_free(map);
+  map_free(&map);
   cs_free(cs);
 
   return ierr;
@@ -466,10 +475,11 @@ int test_map_init_status_face_centred_cubic(pe_t * pe) {
 int test_map_init_status_simple_cubic(pe_t * pe) {
 
   int ierr = 0;
-
   cs_t * cs = NULL;
+
+  map_options_t opts = map_options_default();
   map_t * map = NULL;
-  int ndata = 0;
+
 
   /* Recall we must have system size a multiple of the lattice constant */
   int acell = 20;
@@ -481,7 +491,7 @@ int test_map_init_status_simple_cubic(pe_t * pe) {
   cs_ntotal_set(cs, ntotal);
   cs_init(cs);
 
-  map_create(pe, cs, ndata, &map);
+  map_create(pe, cs, &opts, &map);
   map_init_status_simple_cubic(map, acell);
 
   {
@@ -497,7 +507,7 @@ int test_map_init_status_simple_cubic(pe_t * pe) {
     if (fabs(sf - pi/6.0) >= 0.01) ierr = -1;
   }
 
-  map_free(map);
+  map_free(&map);
   cs_free(cs);
 
   return ierr;

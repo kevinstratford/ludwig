@@ -2,10 +2,12 @@
  *
  *  fe_lc.h
  *
+ *  Liquid crystal free energy.
+ *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2020 The University of Edinburgh
+ *  (c) 2010-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *    Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -24,7 +26,8 @@
 #include "free_energy.h"
 #include "field.h"
 #include "field_grad.h"
-#include "io_harness.h"
+
+#include "lc_anchoring.h"
 
 typedef struct fe_lc_s fe_lc_t;
 typedef struct fe_lc_param_s fe_lc_param_t;
@@ -60,27 +63,15 @@ struct fe_lc_param_s {
   double rredshift;                       /* Reciprocal redshift */
   double epsilon;                         /* Dielectric anistropy */
   double amplitude0;                      /* Initial amplitude from input */
-  double e0coswt[3];                      /* Electric field */
+  double e0[3];                           /* Electric field (external) */
+  double coswt;                           /* Electric field (phase) */
 
-  double w1_coll;                         /* Anchoring strength parameter */
-  double w2_coll;                         /* Second anchoring parameter */
-  double w1_wall;
-  double w2_wall;
-  double nfix[3];                         /* Fixed anchoring orientation */
-
-  int anchoring_coll;                     /* Colloids anchoring type */
-  int anchoring_wall;                     /* Wall anchoring type */
   int is_redshift_updated;                /* Switch */
   int is_active;                          /* Switch for active fluid */
-};
 
-/* Surface anchoring types */
-enum lc_anchoring_enum {LC_ANCHORING_PLANAR = 0,
-			LC_ANCHORING_NORMAL, 
-			LC_ANCHORING_FIXED,
-			LC_ANCHORING_TYPES /* Last entry */
+  lc_anchoring_param_t coll;              /* Anchoring parameters (colloids) */
+  lc_anchoring_param_t wall;              /* Anchoring parameters (wall) */
 };
-
 
 __host__ int fe_lc_create(pe_t * pe, cs_t * cs, lees_edw_t * le,
 			  field_t * q, field_grad_t * dq, fe_lc_t ** fe);
@@ -148,9 +139,6 @@ __host__ __device__
 int fe_lc_reduced_temperature(fe_lc_t * fe,  double * tau);
 
 __host__ __device__
-int fe_lc_dimensionless_field_strength(fe_lc_t * fe, double * edm);
-
-__host__ __device__
 void fe_lc_mol_field_v(fe_lc_t * fe, int index, double h[3][3][NSIMDVL]);
 
 __host__ __device__
@@ -164,9 +152,9 @@ void fe_lc_str_anti_v(fe_lc_t * fe, int index, double s[3][3][NSIMDVL]);
 
 __host__ __device__
 void fe_lc_compute_h_v(fe_lc_t * fe,
-		       double q[3][3][NSIMDVL], 
+		       double q[3][3][NSIMDVL],
 		       double dq[3][3][3][NSIMDVL],
-		       double dsq[3][3][NSIMDVL], 
+		       double dsq[3][3][NSIMDVL],
 		       double h[3][3][NSIMDVL]);
 __host__ __device__
 void fe_lc_compute_stress_v(fe_lc_t * fe,
@@ -184,8 +172,11 @@ int fe_lc_grad_stress(fe_lc_t * fe, int index, double sgrad[3][3]);
 
 /* Function of the parameters only */
 
+__host__ int fe_lc_dimensionless_field_strength(const fe_lc_param_t * param,
+						double * e0);
+
 __host__ __device__
-int fe_lc_amplitude_compute(fe_lc_param_t * param, double * a);
+int fe_lc_amplitude_compute(const fe_lc_param_t * param, double * a);
 
 __host__ __device__
 int fe_lc_q_uniaxial(fe_lc_param_t * param, const double n[3], double q[3][3]);
@@ -193,4 +184,3 @@ __host__ int fe_lc_scalar_ops(double q[3][3], double qs[NQAB]);
 
 
 #endif
- 

@@ -35,7 +35,7 @@ Interfacial width     =  1.13137e+00
 Using Cahn-Hilliard finite difference solver.
 Mobility M            =  4.50000e-01
 Order parameter noise = off
-Force calculation:      divergence method
+Force calculation:      stress_divergence
 
 System properties
 ----------------
@@ -53,7 +53,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -72,11 +72,6 @@ Ghost relaxation time:    1.00000e+00
 Hydrodynamics
 -------------
 Hydrodynamics: on
-
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
 
 Advection scheme order:  1 (default)
 Initialising phi for spinodal
@@ -122,6 +117,9 @@ Initial conditions.
 Scalars - total mean variance min max
 [rho]      261110.00  1.00000000000  2.2204460e-16  1.00000000000  1.00000000000
 [phi] -1.1543906e+01 -4.4210890e-05 8.3500524e-04 -4.9999763e-02 4.9999902e-02
+
+Free energies - timestep f v f/v f_s a f_s/a
+[fe]              0 -6.0796618987e+00  2.6111000000e+05 -2.3283910607e-05  0.0000000000e+00
 
 Momentum - x y z
 [total   ]  0.0000000e+00  0.0000000e+00  0.0000000e+00

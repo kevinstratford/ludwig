@@ -2,30 +2,22 @@
 #
 #  nvcc build
 #
-#  module load intel-mpi-17
-#  module load intel-comiplers-17
-#  module load cuda/9.1
+#  "Serial" build.
 #
-#  Host   As epcc-cirrus-intel.mk
-#  Device NVIDIA Tesla V100-SXM2
+#  module load nvidia/nvhpc-nompi
 #
 ###############################################################################
 
-BUILD   = parallel
-MODEL   = -D_D3Q19_
+BUILD  = serial
+MODEL  = -D_D3Q19_
+TARGET = nvcc
 
 CC     = nvcc
-CFLAGS = -ccbin=icpc -DADDR_SOA -DNDEBUG -arch=sm_70 -x cu -dc -Xcompiler -fast
+CFLAGS = -g -DADDR_SOA -O2 -arch=sm_70 -x cu -dc
+
+# PTX assembler extra information:  -Xptxas -v
+# Alternative compiler, e.g., Intel: -ccbin=icpc -Xcompiler -fast
 
 AR = ar
 ARFLAGS = -cr
-LDFLAGS= -ccbin=icpc -arch=sm_70
-
-MPI_HOME     = /lustre/sw/intel/compilers_and_libraries_2017.2.174/linux/mpi
-MPI_INC_PATH = -I$(MPI_HOME)/include64
-MPI_LIB_PATH = -L$(MPI_HOME)/lib64 -lmpi
-
-LAUNCH_SERIAL_CMD =
-LAUNCH_MPIRUN_CMD = mpirun
-MPIRUN_NTASK_FLAG = -np
-
+LDFLAGS = -arch=sm_70

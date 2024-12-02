@@ -8,7 +8,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2021 The University of Edinburgh
+ *  (c) 2010-2024 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -40,10 +40,11 @@ static int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
 			   field_t * fq,
 			   field_grad_t * fqgrad);
 static int test_bp_nonfield(void);
+int test_fe_lc_dimensionless_field_strength(pe_t * pe);
 
 
 __host__ int do_test_fe_lc_device1(pe_t * pe, cs_t * cs, fe_lc_t * fe);
-__global__ void do_test_fe_lc_kernel1(fe_lc_t * fe, fe_lc_param_t ref);
+__global__ void do_test_fe_lc_kernel1(fe_lc_t * fe, const fe_lc_param_t * ref);
 
 
 /*****************************************************************************
@@ -69,11 +70,15 @@ int test_bp_suite(void) {
   lees_edw_create(pe, cs, NULL, &le);
 
   test_bp_nonfield();
+  test_fe_lc_dimensionless_field_strength(pe);
 
-  field_create(pe, cs, NQAB, "q", &fq);
-  field_init(fq, nhalo, le);
-  field_grad_create(pe, fq, 2, &fqgrad);
-  field_grad_set(fqgrad, grad_3d_27pt_fluid_d2, NULL);
+  {
+    field_options_t opts = field_options_ndata_nhalo(NQAB, nhalo);
+    field_create(pe, cs, le, "q", &opts, &fq);
+
+    field_grad_create(pe, fq, 2, &fqgrad);
+    field_grad_set(fqgrad, grad_3d_27pt_fluid_d2, NULL);
+  }
 
   fe_lc_create(pe, cs, le, fq, fqgrad, &fe);
 
@@ -190,11 +195,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   double h[3][3];
   double field[3];
   double value, vtest;
-  double e;
   double ltot[3];
   fe_lc_param_t param = {0};
   physics_t * phys = NULL;
-  PI_DOUBLE(pi_);
 
   assert(pe);
   assert(le);
@@ -244,7 +247,7 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
    * so an exhaustive test is probably not worth while. */
 
   {
-    double angles[3] = {}; /* No rotation. */
+    double angles[3] = {0}; /* No rotation. */
     blue_phase_O8M_init(cs, &param, fq, angles);
   }
 
@@ -331,10 +334,13 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   /* Now the free energy density. This requires that the gradients are
    * set. These values use the standard 27-point stencil in 3-d. */
 
-  field_halo_swap(fq, FIELD_HALO_HOST);
+  /* Gradient computation is on the device, so ... */
 
   field_memcpy(fq, tdpMemcpyHostToDevice);
+  field_halo(fq);
+
   field_grad_compute(fqgrad);
+
   field_grad_memcpy(fqgrad, tdpMemcpyDeviceToHost);
 
   ic = 1;
@@ -679,9 +685,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
    * to test the decomposition into bulk and gradient parts */
 
   {
-    double sfull[3][3] = {};
-    double sbulk[3][3] = {};
-    double sgrad[3][3] = {};
+    double sfull[3][3] = {0};
+    double sbulk[3][3] = {0};
+    double sgrad[3][3] = {0};
     ic = 1;
     jc = 1;
     kc = 1;
@@ -700,9 +706,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   }
 
   {
-    double sfull[3][3] = {};
-    double sbulk[3][3] = {};
-    double sgrad[3][3] = {};
+    double sfull[3][3] = {0};
+    double sbulk[3][3] = {0};
+    double sgrad[3][3] = {0};
     ic = 1;
     jc = 1;
     kc = 2;
@@ -721,9 +727,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   }
 
   {
-    double sfull[3][3] = {};
-    double sbulk[3][3] = {};
-    double sgrad[3][3] = {};
+    double sfull[3][3] = {0};
+    double sbulk[3][3] = {0};
+    double sgrad[3][3] = {0};
     ic = 1;
     jc = 1;
     kc = 3;
@@ -742,9 +748,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   }
 
   {
-    double sfull[3][3] = {};
-    double sbulk[3][3] = {};
-    double sgrad[3][3] = {};
+    double sfull[3][3] = {0};
+    double sbulk[3][3] = {0};
+    double sgrad[3][3] = {0};
     ic = 1;
     jc = 12;
     kc = 4;
@@ -763,9 +769,9 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   }
 
   {
-    double sfull[3][3] = {};
-    double sbulk[3][3] = {};
-    double sgrad[3][3] = {};
+    double sfull[3][3] = {0};
+    double sbulk[3][3] = {0};
+    double sgrad[3][3] = {0};
     ic = 2;
     jc = 6;
     kc = 7;
@@ -785,54 +791,25 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
 
   /* Electric field test */
 
-  /* Default electric field should be zero */
-
-  field[X] = 0.0;
-  field[Y] = 0.0;
-  field[Z] = 1.0;
-
-  physics_e0_set(phys, field);
-  fe_lc_param_commit(fe);
-
-
-  e = sqrt(27.0*epsilon*1.0/(32.0*pi_*a0*gamma));
-
-  /* Electric field (0.0, 0.0, 1.0) gives dimensionless field */
-  fe_lc_dimensionless_field_strength(fe, &value);
-  test_assert(fabs(value - e) < TEST_FLOAT_TOLERANCE);
-
-  field[X] = 1.0;
-  field[Y] = 1.0;
-  field[Z] = 1.0;
-
-  physics_e0_set(phys, field);
-
-  e = sqrt(27.0*epsilon*3.0/(32.0*pi_*a0*gamma));
-
-  fe_lc_dimensionless_field_strength(fe, &value);
-  /* Electric field (1.0, 1.0, 1.0) gives dimensionless field ... */
-  test_assert(fabs(value - e) < TEST_FLOAT_TOLERANCE);
-
   /* Set dimensionless field to 0.2 for these parameters */
 
   field[X] = 0.012820969/sqrt(3.0);
   field[Y] = field[X];
   field[Z] = field[X];
 
-
-  physics_e0_set(phys, field);
-
-  fe_lc_dimensionless_field_strength(fe, &value);
-  fe_lc_param_commit(fe);
-  test_assert(fabs(value - 0.2) < TEST_FLOAT_TOLERANCE);
+  fe->param->e0[X] = field[X];
+  fe->param->e0[Y] = field[Y];
+  fe->param->e0[Z] = field[Z];
 
   /* Note the electric field remains switched on so... */
 
-  field_halo(fq);
   field_grad_set(fqgrad, grad_3d_7pt_fluid_d2, NULL);
 
   field_memcpy(fq, tdpMemcpyHostToDevice);
+  field_halo(fq);
+
   field_grad_compute(fqgrad);
+
   field_grad_memcpy(fqgrad, tdpMemcpyDeviceToHost);
 
   ic = 1;
@@ -856,16 +833,14 @@ int test_o8m_struct(pe_t * pe, cs_t * cs, lees_edw_t * le, fe_lc_t * fe,
   fe_lc_compute_fed(fe, gamma, q, dq, &value);
   test_assert(fabs(value - 6.7087074e-04) < TEST_FLOAT_TOLERANCE);
 
+  /* Dimensionless field 0.2 */
   field[X] = 0.012820969;
   field[Y] = 0.0;
   field[Z] = 0.0;
 
-  physics_e0_set(phys, field);
-  fe_lc_param_commit(fe);
-
-  fe_lc_dimensionless_field_strength(fe, &value);
-  test_assert(fabs(value - 0.2) < TEST_FLOAT_TOLERANCE);
-
+  fe->param->e0[X] = field[X];
+  fe->param->e0[Y] = field[Y];
+  fe->param->e0[Z] = field[Z];
 
   /* Note the electric field now changed so... */
 
@@ -989,8 +964,15 @@ __host__ int do_test_fe_lc_device1(pe_t * pe, cs_t * cs, fe_lc_t * fe) {
   kernel_launch_param(1, &nblk, &ntpb);
   ntpb.x = 1;
 
-  tdpLaunchKernel(do_test_fe_lc_kernel1, nblk, ntpb, 0, 0, fetarget, param);
-  tdpDeviceSynchronize();
+  {
+    fe_lc_param_t * p = NULL;
+    tdpAssert(tdpMalloc((void **) &p, sizeof(fe_lc_param_t)));
+    tdpAssert(tdpMemcpy(p, &param, sizeof(fe_lc_param_t),
+			tdpMemcpyHostToDevice));
+    tdpLaunchKernel(do_test_fe_lc_kernel1, nblk, ntpb, 0, 0, fetarget, p);
+    tdpDeviceSynchronize();
+    tdpAssert(tdpFree(p));
+  }
 
   physics_free(phys);
 
@@ -1003,7 +985,8 @@ __host__ int do_test_fe_lc_device1(pe_t * pe, cs_t * cs, fe_lc_t * fe) {
  *
  *****************************************************************************/
 
-__global__ void do_test_fe_lc_kernel1(fe_lc_t * fe, fe_lc_param_t ref) {
+__global__ void do_test_fe_lc_kernel1(fe_lc_t * fe,
+				      const fe_lc_param_t * pref) {
 
   fe_lc_param_t p;
   PI_DOUBLE(pi);
@@ -1014,11 +997,55 @@ __global__ void do_test_fe_lc_kernel1(fe_lc_t * fe, fe_lc_param_t ref) {
 
   /* epsilon is sclaed by a factor of 12pi within fe_lc */
 
-  test_assert(fabs(p.a0 - ref.a0) < DBL_EPSILON);
-  test_assert(fabs(p.gamma - ref.gamma) < DBL_EPSILON);
-  test_assert(fabs(p.kappa0 - ref.kappa0) < DBL_EPSILON);
-  test_assert(fabs(12.0*pi*p.epsilon - ref.epsilon) < FLT_EPSILON);
-  test_assert(fabs(p.redshift - ref.redshift) < DBL_EPSILON);
+  test_assert(fabs(p.a0 - pref->a0) < DBL_EPSILON);
+  test_assert(fabs(p.gamma - pref->gamma) < DBL_EPSILON);
+  test_assert(fabs(p.kappa0 - pref->kappa0) < DBL_EPSILON);
+  test_assert(fabs(12.0*pi*p.epsilon - pref->epsilon) < FLT_EPSILON);
+  test_assert(fabs(p.redshift - pref->redshift) < DBL_EPSILON);
 
   return;
+}
+
+/*****************************************************************************
+ *
+ *  test_fe_lc_dimensionless_field_strength
+ *
+ *  Function of only the dielectric anistropy epsilon, gamma, A0, and the
+ *  external field.
+ *
+ *****************************************************************************/
+
+int test_fe_lc_dimensionless_field_strength(pe_t * pe) {
+
+  int ifail = 0;
+  PI_DOUBLE(pi);
+
+  assert(pe);
+
+  {
+    /* Default must be zero */
+    fe_lc_param_t param = {.a0 = 1.0, .gamma = 3.0};
+    double ered = -1.0;
+    fe_lc_dimensionless_field_strength(&param, &ered);
+    assert(fabs(ered - 0.0) < DBL_EPSILON);
+    if (fabs(ered - 0.0) < DBL_EPSILON) ifail += 1;
+  }
+
+  {
+    /* epsilon = 1 in reduced units should give reference value eref */
+    double e[3] = {1.0, 1.0, 1.0};
+    double a0 = 1.0;
+    double gamma = 2.7;
+    double epsilon = 1.0/(12.0*pi);
+    double eref = sqrt(27.0*3.0/(32.0*pi*a0*gamma));
+
+    fe_lc_param_t param = {.a0 = a0, .gamma = gamma, .epsilon = epsilon,
+                           .e0 = {e[X], e[Y], e[Z]}};
+    double ered = -1.0;
+    fe_lc_dimensionless_field_strength(&param, &ered);
+    assert(fabs(ered - eref) < DBL_EPSILON);
+    if (fabs(ered - eref) < DBL_EPSILON) ifail += 1;
+  }
+
+  return ifail;
 }

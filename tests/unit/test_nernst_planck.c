@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2012-2017 The University of Edinburgh
+ *  (c) 2012-2023 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -18,24 +18,17 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "pe.h"
 #include "coords.h"
 #include "physics.h"
-#include "control.h"
 #include "map.h"
-#include "psi.h"
-#include "psi_s.h"
 #include "psi_sor.h"
-#include "psi_stats.h"
 #include "fe_electro.h"
 #include "nernst_planck.h"
-#include "tests.h"
 
-static int do_test_gouy_chapman(pe_t * pe);
-static int test_io(cs_t * cs, psi_t * psi, int tstep);
+static int test_nernst_planck_driver(pe_t * pe);
 
 /*****************************************************************************
  *
@@ -49,7 +42,7 @@ int test_nernst_planck_suite(void) {
 
   pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
 
-  do_test_gouy_chapman(pe);
+  test_nernst_planck_driver(pe);
 
   pe_info(pe, "PASS     ./unit/test_nernst_planck\n");
   pe_free(pe);
@@ -59,7 +52,9 @@ int test_nernst_planck_suite(void) {
 
 /*****************************************************************************
  *
- *  do_test_gouy_chapman
+ *  test_nernst_planck_driver
+ *
+ *  This is the Gouy-Chapman problem.
  *
  *  A theory exists for symmetric electrolytes near a flat surface
  *  owing to Gouy and Chapman. (See Lyklema "Fundamentals of
@@ -80,21 +75,19 @@ int test_nernst_planck_suite(void) {
  *  where D_eff ~= D_k e beta rho_k (from the Nernst Planck
  *  equation). The parameters make 20,000 steps reasonable.
  *
- *  The tolerances on the SOR could be investigated.
  *
- *  This is a test of the Gouy-Chapman theory.
+ *  This is a test of the Gouy-Chapman theory if one runs a significant
+ *  number of time steps...
  *
  *****************************************************************************/
 
-static int do_test_gouy_chapman(pe_t * pe) {
+static int test_nernst_planck_driver(pe_t * pe) {
 
-  int nk = 2;          /* Number of species */
+  int nhalo = 1;
+  int ntotal[3] = {64, 4, 4};  /* Quasi-one-dimensional system */
 
-  int ic, jc, kc, index;
   int nlocal[3];
   int noffst[3];
-  int test_output_required = 0;
-  int tstep;
   int mpi_cartsz[3];
   int mpi_cartcoords[3];
 
@@ -102,43 +95,35 @@ static int do_test_gouy_chapman(pe_t * pe) {
   double rho_i;               /* Interior charge density */
   double rho_b, rho_b_local;  /* background ionic strength */
 
-  int valency[2] = {+1, -1};
-  double diffusivity[2] = {1.e-2, 1.e-2};
-
-  double eunit = 1.;           /* Unit charge, ... */
-  double epsilon = 3.3e3;      /* ... epsilon, and ... */
-  double beta = 3.0e4;         /* ... the Boltzmann factor i.e., t ~ 10^5 */
-  double lb;                   /* ... make up the Bjerrum length */
-  double ldebye;               /* Debye length */
   double rho_el = 1.0e-3;      /* charge density */
-  double yd;                   /* Dimensionless surface potential */
   double ltot[3];
 
-  int ntotal[3] = {64, 4, 4};  /* Quasi-one-dimensional system */
-  int grid[3];                 /* Processor decomposition */
-
-  int tmax = 200;
 
   cs_t * cs = NULL;
   map_t * map = NULL;
   psi_t * psi = NULL;
   physics_t * phys = NULL;
   fe_electro_t * fe = NULL;
-  MPI_Comm comm;
+
+  double epsilon = 3.3e3;      /* ... epsilon, and ... */
+  double beta = 3.0e4;         /* ... the Boltzmann factor i.e., t ~ 10^5 */
+
+  map_options_t mapopts = map_options_default();
+  psi_options_t opts = psi_options_default(nhalo);
 
   assert(pe);
 
   physics_create(pe, &phys);
 
   cs_create(pe, &cs);
-  cs_nhalo_set(cs, 1);
+  cs_nhalo_set(cs, nhalo);
   cs_ntotal_set(cs, ntotal);
-  cs_cart_comm(cs, &comm);
 
-  grid[X] = pe_mpi_size(pe);
-  grid[Y] = 1;
-  grid[Z] = 1;
-  cs_decomposition_set(cs, grid);
+  {
+    /* If parallel, make sure the decomposition is in x-direction */
+    int grid[3] = {pe_mpi_size(pe), 1, 1};
+    cs_decomposition_set(cs, grid);
+  }
 
   cs_init(cs);
 
@@ -148,20 +133,15 @@ static int do_test_gouy_chapman(pe_t * pe) {
   cs_cartsz(cs, mpi_cartsz);
   cs_cart_coords(cs, mpi_cartcoords);
 
-  map_create(pe, cs, 0, &map);
+  map_create(pe, cs, &mapopts, &map);
   assert(map);
 
-  psi_create(pe, cs, nk, &psi);
-  assert(psi);
+  opts.beta     = beta;
+  opts.epsilon1 = epsilon;
+  opts.epsilon2 = epsilon;
+  psi_create(pe, cs, &opts, &psi);
 
-  psi_valency_set(psi, 0, valency[0]);
-  psi_valency_set(psi, 1, valency[1]);
-  psi_diffusivity_set(psi, 0, diffusivity[0]);
-  psi_diffusivity_set(psi, 1, diffusivity[1]);
-  psi_unit_charge_set(psi, eunit);
-  psi_epsilon_set(psi, epsilon);
-  psi_beta_set(psi, beta);
-
+  /* Care. the free energy gets the temperature from global physics_t. */
   fe_electro_create(pe, psi, &fe);
 
   /* wall charge density */
@@ -172,11 +152,11 @@ static int do_test_gouy_chapman(pe_t * pe) {
 
 
   /* apply counter charges & electrolyte */
-  for (ic = 1; ic <= nlocal[X]; ic++) {
-    for (jc = 1; jc <= nlocal[Y]; jc++) {
-      for (kc = 1; kc <= nlocal[Z]; kc++) {
+  for (int ic = 1; ic <= nlocal[X]; ic++) {
+    for (int jc = 1; jc <= nlocal[Y]; jc++) {
+      for (int kc = 1; kc <= nlocal[Z]; kc++) {
 
-	index = cs_index(cs, ic, jc, kc);
+	int index = cs_index(cs, ic, jc, kc);
 
 	psi_psi_set(psi, index, 0.0);
 	psi_rho_set(psi, index, 0, rho_el);
@@ -188,26 +168,11 @@ static int do_test_gouy_chapman(pe_t * pe) {
 
   /* apply wall charges */
   if (mpi_cartcoords[X] == 0) {
-    ic = 1;
-    for (jc = 1; jc <= nlocal[Y]; jc++) {
-      for (kc = 1; kc <= nlocal[Z]; kc++) {
+    int ic = 1;
+    for (int jc = 1; jc <= nlocal[Y]; jc++) {
+      for (int kc = 1; kc <= nlocal[Z]; kc++) {
 
-	index = cs_index(cs, ic, jc, kc);
-	map_status_set(map, index, MAP_BOUNDARY); 
-
-	psi_rho_set(psi, index, 0, rho_w);
-	psi_rho_set(psi, index, 1, 0.0);
-
-      }
-    }
-  }
-
-  if (mpi_cartcoords[X] == mpi_cartsz[X] - 1) {
-    ic = nlocal[X];
-    for (jc = 1; jc <= nlocal[Y]; jc++) {
-      for (kc = 1; kc <= nlocal[Z]; kc++) {
-
-	index = cs_index(cs, ic, jc, kc);
+	int index = cs_index(cs, ic, jc, kc);
 	map_status_set(map, index, MAP_BOUNDARY);
 
 	psi_rho_set(psi, index, 0, rho_w);
@@ -217,150 +182,84 @@ static int do_test_gouy_chapman(pe_t * pe) {
     }
   }
 
-  map_halo(map);
+  if (mpi_cartcoords[X] == mpi_cartsz[X] - 1) {
+    int ic = nlocal[X];
+    for (int jc = 1; jc <= nlocal[Y]; jc++) {
+      for (int kc = 1; kc <= nlocal[Z]; kc++) {
 
-  for (tstep = 1; tstep <= tmax; tstep++) {
+	int index = cs_index(cs, ic, jc, kc);
+	map_status_set(map, index, MAP_BOUNDARY);
 
-    psi_halo_psi(psi);
-    psi_sor_poisson(psi);
-    psi_halo_rho(psi);
-    /* The test is run with no hydrodynamics, hence NULL here. */
-    nernst_planck_driver(psi, (fe_t *) fe, NULL, map);
+	psi_rho_set(psi, index, 0, rho_w);
+	psi_rho_set(psi, index, 1, 0.0);
 
-    if (tstep % 1000 == 0) {
-
-      pe_info(pe, "%d\n", tstep);
-      psi_stats_info(psi);
-      if (test_output_required) test_io(cs, psi, tstep);
+      }
     }
   }
+
+  /* Make a single update ... */
+
+  map_halo(map);
+
+  psi_halo_psi(psi);
+
+  {
+    psi_solver_sor_t * sor = NULL;
+    psi_solver_sor_create(psi, &sor);
+    psi_solver_sor_solve(sor, -1);
+    psi_solver_sor_free(&sor);
+  }
+
+  psi_halo_rho(psi);
+
+  nernst_planck_driver(psi, (fe_t *) fe, map);
 
   /* We adopt a rather simple way to extract the answer from the
    * MPI task holding the centre of the system. The charge
    * density must be > 0 to compute the debye length and the
    * surface potential. */
 
-  jc = 2;
-  kc = 2;
-
   rho_b_local = 0.0;
 
-  for (ic = 1; ic <= nlocal[X]; ic++) {
+  for (int ic = 1; ic <= nlocal[X]; ic++) {
 
-    index = cs_index(cs, ic, jc, kc);
- 
+    int jc = 2;
+    int kc = 2;
+    int index = cs_index(cs, ic, jc, kc);
+
     if (noffst[X] + ic == ntotal[X] / 2) {
       psi_ionic_strength(psi, index, &rho_b_local);
     }
   }
 
-  MPI_Allreduce(&rho_b_local, &rho_b, 1, MPI_DOUBLE, MPI_SUM, comm);
+  {
+    MPI_Comm comm = MPI_COMM_NULL;
+    cs_cart_comm(cs, &comm);
+    MPI_Allreduce(&rho_b_local, &rho_b, 1, MPI_DOUBLE, MPI_SUM, comm);
+  }
 
-  psi_bjerrum_length(psi, &lb);
-  psi_debye_length(psi, rho_b, &ldebye);
-  psi_surface_potential(psi, rho_w, rho_b, &yd);
+  {
+    double lb = 0.0;                /* Bjerrum length */
+    double ldebye = 0.0;            /* Debye length */
+    double yd = 0.0;                /* Dimensionless surface potential */
 
-  assert(tmax == 200);
-  assert(ntotal[X] == 64);
-  assert(fabs(lb     - 7.2343156e-01) < FLT_EPSILON);
-  assert(fabs(ldebye - 6.0648554e+00) < FLT_EPSILON);
-  assert(fabs(yd     - 5.1997576e-05) < FLT_EPSILON);
+    psi_bjerrum_length1(&opts, &lb);
+    psi_debye_length1(&opts, rho_b, &ldebye);
+    psi_surface_potential(psi, rho_w, rho_b, &yd);
 
-  map_free(map);
+    /* Only the surface potential has really changed compared with the
+     * initial conditions ... */
+
+    assert(fabs(lb     - 7.23431560e-01) < FLT_EPSILON);
+    assert(fabs(ldebye - 6.04727364e+00) < FLT_EPSILON);
+    assert(fabs(yd     - 5.18713579e-05) < FLT_EPSILON);
+  }
+
+  map_free(&map);
   fe_electro_free(fe);
-  psi_free(psi);
+  psi_free(&psi);
   cs_free(cs);
   physics_free(phys);
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  test_io
- *
- *****************************************************************************/
-
-static int test_io(cs_t * cs, psi_t * psi, int tstep) {
-
-  int ntotal[3];
-  int nlocal[3];
-  int ic, jc, kc, index;
-
-  double * field;               /* 1-d field (local) */
-  double * psifield;            /* 1-d psi field for output */
-  double * rho0field;           /* 1-d rho0 field for output */
-  double * rho1field;           /* 1-d rho0 field for output */
-
-  char filename[BUFSIZ];
-  FILE * out;
-  MPI_Comm comm;
-
-  cs_nlocal(cs, nlocal);
-  cs_ntotal(cs, ntotal);
-  cs_cart_comm(cs, &comm);
-
-  jc = 2;
-  kc = 2;
-
-  /* 1D output. calloc() is used to zero the arays, then
-   * MPI_Gather to get complete picture. */
-
-  field = (double *) calloc(nlocal[X], sizeof(double));
-  psifield = (double *) calloc(ntotal[X], sizeof(double));
-  rho0field = (double *) calloc(ntotal[X], sizeof(double));
-  rho1field = (double *) calloc(ntotal[X], sizeof(double));
-  assert(field);
-  assert(psifield);
-  assert(rho0field);
-  assert(rho1field);
-  if (field == NULL) pe_fatal(psi->pe, "calloc(field) failed\n");
-  if (psifield == NULL) pe_fatal(psi->pe, "calloc(psifield) failed\n");
-  if (rho0field == NULL) pe_fatal(psi->pe, "calloc(rho0field) failed\n");
-  if (rho1field == NULL) pe_fatal(psi->pe, "calloc(rho1field) failed\n");
-
-  for (ic = 1; ic <= nlocal[X]; ic++) {
-
-    index = cs_index(cs, ic, jc, kc);
-    psi_psi(psi, index, field + ic - 1);
-  }
-
-  MPI_Gather(field, nlocal[X], MPI_DOUBLE,
-	     psifield, nlocal[X], MPI_DOUBLE, 0, comm);
-
-  for (ic = 1; ic <= nlocal[X]; ic++) {
-    index = cs_index(cs, ic, jc, kc);
-    psi_rho(psi, index, 0, field + ic - 1);
-  }
-
-  MPI_Gather(field, nlocal[X], MPI_DOUBLE,
-	     rho0field, nlocal[X], MPI_DOUBLE, 0, comm);
-
-  for (ic = 1; ic <= nlocal[X]; ic++) {
-    index = cs_index(cs, ic, jc, kc);
-    psi_rho(psi, index, 1, field + ic - 1);
-  }
-
-  MPI_Gather(field, nlocal[X], MPI_DOUBLE,
-	     rho1field, nlocal[X], MPI_DOUBLE, 0, comm);
-
-  if (cs_cart_rank(cs) == 0) {
-
-    sprintf(filename, "np_test-%d.dat", tstep);
-    out = fopen(filename, "w");
-    if (out == NULL) pe_fatal(psi->pe, "Could not open %s\n", filename);
-
-    for (ic = 1; ic <= ntotal[X]; ic++) {
-      fprintf(out, "%d %14.7e %14.7e %14.7e\n", ic, psifield[ic-1],
-	      rho0field[ic-1], rho1field[ic-1]);
-    }
-    fclose(out);
-  }
-
-  free(rho1field);
-  free(rho0field);
-  free(psifield);
-  free(field);
 
   return 0;
 }

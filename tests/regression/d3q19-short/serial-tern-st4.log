@@ -50,7 +50,7 @@ Using Cahn-Hilliard solver:
 Number of fields      =  2
 Mobility (phi)        =  1.00000e+00
 Mobility (psi)        =  1.00000e+00
-Force calculation:      phi grad mu method
+Force calculation:      phi_gradmu
 
 System properties
 ----------------
@@ -68,7 +68,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -87,11 +87,6 @@ Ghost relaxation time:    1.00000e+00
 Hydrodynamics
 -------------
 Hydrodynamics: off
-
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
 
 Advection scheme order:  1 (default)
 
@@ -117,6 +112,10 @@ Scalars - total mean variance min max
 [rho]       40000.00  1.00000000000  2.2204460e-16  1.00000000000  1.00000000000
 [phi] -2.7000000e+02 -6.7500000e-03 6.7495444e-01 -1.0000000e+00 1.0000000e+00
 [phi]  1.3000000e+04  3.2500000e-01 2.1937500e-01  0.0000000e+00 1.0000000e+00
+
+Free energies
+[rho/phi/psi]          0 -4.0000000000e-01 -3.0000000000e-03  1.6500000000e-01
+[surf/fl/tot]          0 -2.3800000000e-01  3.2824083333e+00  3.0444083333e+00
 
 Momentum - x y z
 [total   ]  0.0000000e+00  0.0000000e+00  0.0000000e+00

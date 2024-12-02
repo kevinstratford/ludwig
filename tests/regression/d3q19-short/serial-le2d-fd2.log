@@ -37,7 +37,7 @@ Amplitude             =  1.28418e+00
 
 Using Cahn-Hilliard solver:
 Mobility M            =  2.50000e-01
-Force caluclation:      divergence method
+Force calculation:      stress_divergence
 
 System properties
 ----------------
@@ -55,7 +55,7 @@ Lattice Boltzmann distributions
 Model:            d3q19  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -69,16 +69,11 @@ Isothermal fluctuations:  off
 Shear relaxation time:    7.50000e-01
 Bulk relaxation time:     7.50000e-01
 Ghost relaxation time:    1.00000e+00
-[User   ] Random number seed: -7361237
+[User   ] Random number seed: 13
 
 Hydrodynamics
 -------------
 Hydrodynamics: on
-
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
 
 Advection scheme order: 5
 Initialising phi for spinodal
@@ -88,6 +83,9 @@ Initial conditions.
 Scalars - total mean variance min max
 [rho]        4096.00  1.00000000000  2.2204460e-16  1.00000000000  1.00000000000
 [phi] -1.1802440e-01 -2.8814551e-05 8.2680383e-02 -4.9977721e-01 4.9988335e-01
+
+Free energy density - timestep total fluid
+[fed]              0  5.8277975965e-04  5.8277975965e-04
 
 Momentum - x y z
 [total   ]  5.6843419e-14  0.0000000e+00  0.0000000e+00

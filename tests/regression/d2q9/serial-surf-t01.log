@@ -51,7 +51,7 @@ Lattice Boltzmann distributions
 Model:            d2q9  
 SIMD vector len:  1
 Number of sets:   1
-Halo type:        full
+Halo type:        lb_halo_target (full halo)
 Input format:     binary
 Output format:    binary
 I/O grid:         1 1 1
@@ -71,11 +71,6 @@ Hydrodynamics
 -------------
 Hydrodynamics: off
 
-Order parameter I/O
--------------------
-Order parameter I/O format:   
-I/O decomposition:            1 1 1
-
 Advection scheme order:  1 (default)
 Initialising phi as block of size 128.00 along the X axis
 Initialising psi to a uniform value psi0
@@ -85,8 +80,11 @@ Initial conditions.
 
 Scalars - total mean variance min max
 [rho]         512.00  1.00000000000  1.1102230e-16  1.00000000000  1.00000000000
-[phi] -2.1427304e-14 -4.1850204e-17 9.4696695e-01 -1.0000000e+00 1.0000000e+00
-[phi]  5.1200000e-02  1.0000000e-04-2.4815418e-22  1.0000000e-04 1.0000000e-04
+[phi] -2.1427304e-14 -4.1850204e-17  9.4696695e-01 -1.0000000e+00 1.0000000e+00
+[phi]  5.1200000e-02  1.0000000e-04 -2.4815418e-22  1.0000000e-04 1.0000000e-04
+
+Free energy density - timestep total fluid
+[fed]              0 -4.8447490995e-03 -4.8447490995e-03
 
 Momentum - x y z
 [total   ]  7.1054274e-15  0.0000000e+00  0.0000000e+00
