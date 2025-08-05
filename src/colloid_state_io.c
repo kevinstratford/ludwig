@@ -52,7 +52,7 @@ int colloid_state_io_write_buf_ascii(const colloid_state_t * s, char * buf) {
     ifail = -1;
   }
   else {
-    const size_t item = 25*sizeof(char); /* Single datum is 25 char ... */
+    const int item        = 25*sizeof(char); /* Single datum is 25 char ... */
     const char * i1format = "%24d\n";
     const char * d3format = "%24.15e ";  /* space */
     const char * d1format = "%24.15e\n"; /* new line */

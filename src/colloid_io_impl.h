@@ -19,7 +19,7 @@ typedef struct colloid_io_impl_s colloid_io_impl_t;
 
 /* destructor */
 
-typedef int (* colloid_io_impl_free_ft) (colloid_io_impl_t ** cio);
+typedef void (* colloid_io_impl_free_ft) (colloid_io_impl_t ** io);
 
 /* Synchronous read / write */
 
@@ -29,16 +29,16 @@ typedef int (* colloid_io_impl_write_ft) (colloid_io_impl_t * io,
 					  const char * filename);
 
 struct colloid_io_impl_vt_s {
-  colloid_io_impl_free  free;          /* Destructor */
-  colloid_io_ompl_read  read;          /* Synchronous read */
-  colloid_io_impl_write write;         /* Synchronous write */
+  colloid_io_impl_free_ft  free;          /* Destructor */
+  colloid_io_impl_read_ft  read;          /* Synchronous read */
+  colloid_io_impl_write_ft write;         /* Synchronous write */
 };
 
 struct colloid_io_impl_s {
-  const colloid_io_impl_vt_t * impl;   /* Implementation */
-  colloids_info_t * info:              /* Colloid information */
+  const colloid_io_impl_vt_t * impl;      /* Implementation */
 };
 
-int colloid_io_impl_create(const cJSON * metadata, colloid_io_impl_t ** io);
-
+/* FIXME: needs colloid_io_options_t to allow differentiation of i/o */
+int colloid_io_impl_create(const colloids_info_t * info,
+			   colloid_io_impl_t ** io);
 #endif
