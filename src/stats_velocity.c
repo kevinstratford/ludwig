@@ -175,6 +175,12 @@ int stats_hydro_uminmax(hydro_t * hydro, map_t * map) {
   return 0;
 }
 
+/*****************************************************************************
+ *
+ *  stats_hydro_uminmax_driver
+ *
+ *****************************************************************************/
+
 int stats_hydro_uminmax_driver(hydro_t * hydro, map_t * map, double umin[3],
 			       double umax[3]) {
 
