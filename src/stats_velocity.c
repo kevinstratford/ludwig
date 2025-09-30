@@ -102,7 +102,6 @@ int stats_velocity_minmax(stats_vel_t * stat, hydro_t * hydro, map_t * map) {
 
 int stats_hydro_volume_flux(hydro_t * hydro, map_t * map) {
 
-  int nlocal[3] = {0};
   double usum_local[3] = {0};
 
   assert(hydro);
