@@ -502,7 +502,7 @@ int field_stats_info_float(field_t * field, map_t * map,
 
   for (int n = 0; n < field->nf; n++) {
 
-    double sum[5] = {0};
+    double sum[5] = {0.0, 0.0, 0.0, +DBL_MAX, -DBL_MAX};
     field_stats_float(field, map, n, sum);
 
     {
@@ -584,20 +584,20 @@ __global__ void field_stats_float_kernel(kernel_3d_t k3d, field_t * field,
   int kindex = 0;
   int tid = threadIdx.x;
 
-  __shared__ double tvol[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tsum[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tvar[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tmin[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tmax[TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tvol[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tsum[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tvar[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tmin[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tmax[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
 
   assert(field);
   assert(map);
 
-  tvol[tid] = 0.0;
-  tsum[tid] = 0.0;
-  tvar[tid] = 0.0;
-  tmin[tid] = +DBL_MAX;
-  tmax[tid] = -DBL_MAX;
+  tvol[TARGET_PAD*tid] = 0.0;
+  tsum[TARGET_PAD*tid] = 0.0;
+  tvar[TARGET_PAD*tid] = 0.0;
+  tmin[TARGET_PAD*tid] = +DBL_MAX;
+  tmax[TARGET_PAD*tid] = -DBL_MAX;
 
   for_simt_parallel(kindex, k3d.kiterations, 1) {
 
@@ -613,11 +613,11 @@ __global__ void field_stats_float_kernel(kernel_3d_t k3d, field_t * field,
       double q0[NQAB] = {0};
       field_scalar_array(field, index, q0);
 
-      tvol[tid] += 1.0;
-      tsum[tid] += q0[n];
-      tvar[tid] += q0[n]*q0[n];
-      tmin[tid]  = double_min(tmin[tid], q0[n]);
-      tmax[tid]  = double_max(tmax[tid], q0[n]);
+      tvol[TARGET_PAD*tid] += 1.0;
+      tsum[TARGET_PAD*tid] += q0[n];
+      tvar[TARGET_PAD*tid] += q0[n]*q0[n];
+      tmin[TARGET_PAD*tid]  = double_min(tmin[TARGET_PAD*tid], q0[n]);
+      tmax[TARGET_PAD*tid]  = double_max(tmax[TARGET_PAD*tid], q0[n]);
     }
   }
 
@@ -634,11 +634,11 @@ __global__ void field_stats_float_kernel(kernel_3d_t k3d, field_t * field,
     double bmax = -DBL_MAX;
 
     for (int it = 0; it < blockDim.x; it++) {
-      bvol += tvol[it];
-      bsum += tsum[it];
-      bvar += tvar[it];
-      bmin  = double_min(tmin[it], bmin);
-      bmax  = double_max(tmax[it], bmax);
+      bvol += tvol[TARGET_PAD*it];
+      bsum += tsum[TARGET_PAD*it];
+      bvar += tvar[TARGET_PAD*it];
+      bmin  = double_min(tmin[TARGET_PAD*it], bmin);
+      bmax  = double_max(tmax[TARGET_PAD*it], bmax);
     }
 
     /* Accumulate to final result */

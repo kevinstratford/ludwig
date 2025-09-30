@@ -91,6 +91,10 @@ int fe_lc_stats_info(pe_t * pe, cs_t * cs, fe_lc_t * fe,
 
   if (wall_present(wall)) {
 
+    /* Pending device implementation... */
+    field_memcpy(fe->q, tdpMemcpyDeviceToHost);
+    field_grad_memcpy(fe->dq, tdpMemcpyDeviceToHost);
+
     fe_lc_wall(cs, wall, fe, fe_local + 3);
 
     MPI_Reduce(fe_local, fe_total, NFE_STAT, MPI_DOUBLE, MPI_SUM, 0, comm);
@@ -101,6 +105,10 @@ int fe_lc_stats_info(pe_t * pe, cs_t * cs, fe_lc_t * fe,
 	    fe_total[3], fe_total[4], fe->param->redshift);
   }
   else if (ncolloid > 0) {
+
+    /* Pending device implementation... */
+    field_memcpy(fe->q, tdpMemcpyDeviceToHost);
+    field_grad_memcpy(fe->dq, tdpMemcpyDeviceToHost);
 
     fe_lc_colloid(fe, cs, cinfo, map, fe_local + 3);
 
