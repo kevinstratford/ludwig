@@ -263,18 +263,18 @@ __global__ void stats_distribution_float_kernel(kernel_3d_t k3d, double rho0,
   int kindex = 0;
   int tid = threadIdx.x;
 
-  __shared__ double tvol[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double trho[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tvar[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tmin[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double tmax[TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tvol[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double trho[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tvar[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tmin[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tmax[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
 
   /* Per thread accumulators */
-  tvol[tid] = 0.0;
-  trho[tid] = 0.0;
-  tvar[tid] = 0.0;
-  tmin[tid] = +DBL_MAX;
-  tmax[tid] = -DBL_MAX;
+  tvol[TARGET_PAD*tid] = 0.0;
+  trho[TARGET_PAD*tid] = 0.0;
+  tvar[TARGET_PAD*tid] = 0.0;
+  tmin[TARGET_PAD*tid] = +DBL_MAX;
+  tmax[TARGET_PAD*tid] = -DBL_MAX;
 
 
   for_simt_parallel(kindex, k3d.kiterations, 1) {
@@ -290,11 +290,11 @@ __global__ void stats_distribution_float_kernel(kernel_3d_t k3d, double rho0,
     if (status == MAP_FLUID) {
       double rho = 0.0; /* rho is this site; subtract rho0 for the anomaly */
       lb_0th_moment(lb, index, LB_RHO, &rho);
-      tvol[tid] += 1.0;
-      trho[tid] += (rho - rho0);
-      tvar[tid] += (rho - rho0)*(rho - rho0);
-      tmin[tid]  = double_min(tmin[tid], rho);
-      tmax[tid]  = double_max(tmax[tid], rho);
+      tvol[TARGET_PAD*tid] += 1.0;
+      trho[TARGET_PAD*tid] += (rho - rho0);
+      tvar[TARGET_PAD*tid] += (rho - rho0)*(rho - rho0);
+      tmin[TARGET_PAD*tid]  = double_min(tmin[TARGET_PAD*tid], rho);
+      tmax[TARGET_PAD*tid]  = double_max(tmax[TARGET_PAD*tid], rho);
     }
   }
 
@@ -309,11 +309,11 @@ __global__ void stats_distribution_float_kernel(kernel_3d_t k3d, double rho0,
     double bmax = -DBL_MIN;
 
     for (int it = 0; it < blockDim.x; it++) {
-      bvol += tvol[it];
-      brho += trho[it];
-      bvar += tvar[it];
-      bmin  = double_min(bmin, tmin[it]);
-      bmax  = double_max(bmax, tmax[it]);
+      bvol += tvol[TARGET_PAD*it];
+      brho += trho[TARGET_PAD*it];
+      bvar += tvar[TARGET_PAD*it];
+      bmin  = double_min(bmin, tmin[TARGET_PAD*it]);
+      bmax  = double_max(bmax, tmax[TARGET_PAD*it]);
     }
 
     tdpAtomicAddDouble(stat_local + 0, bvol);
@@ -483,13 +483,13 @@ __global__ void stats_distribution_momentum_float_t_kernel(kernel_3d_t k3d,
   int kindex = 0;
   int tid = threadIdx.x;
 
-  __shared__ double gx[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double gy[TARGET_MAX_THREADS_PER_BLOCK];
-  __shared__ double gz[TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double gx[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double gy[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double gz[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
 
-  gx[tid] = 0.0;
-  gy[tid] = 0.0;
-  gz[tid] = 0.0;
+  gx[TARGET_PAD*tid] = 0.0;
+  gy[TARGET_PAD*tid] = 0.0;
+  gz[TARGET_PAD*tid] = 0.0;
 
   for_simt_parallel(kindex, k3d.kiterations, 1) {
 
@@ -504,9 +504,9 @@ __global__ void stats_distribution_momentum_float_t_kernel(kernel_3d_t k3d,
     if (status == MAP_FLUID) {
       for (int p = 1; p < lb->nvel; p++) {
 	double f = lb->f[LB_ADDR(lb->nsite,lb->ndist,lb->nvel,index,LB_RHO,p)];
-	gx[tid] += f*util_.cv[p][X];
-	gy[tid] += f*util_.cv[p][Y];
-	gz[tid] += f*util_.cv[p][Z];
+	gx[TARGET_PAD*tid] += f*util_.cv[p][X];
+	gy[TARGET_PAD*tid] += f*util_.cv[p][Y];
+	gz[TARGET_PAD*tid] += f*util_.cv[p][Z];
       }
     }
   }
@@ -520,9 +520,9 @@ __global__ void stats_distribution_momentum_float_t_kernel(kernel_3d_t k3d,
     double bgz = 0.0;
 
     for (int it = 0; it < blockDim.x; it++) {
-      bgx += gx[it];
-      bgy += gy[it];
-      bgz += gz[it];
+      bgx += gx[TARGET_PAD*it];
+      bgy += gy[TARGET_PAD*it];
+      bgz += gz[TARGET_PAD*it];
     }
 
     tdpAtomicAddDouble(sum + X, bgx);
@@ -616,7 +616,6 @@ int stats_distribution_momentum_kahan_t(lb_t * lb, map_t * map, int root,
 /*****************************************************************************
  *
  *  stats_distribution_momentum_kernel_kahan_t
- *
  *
  *  Kernel with compensated sum.
  *
