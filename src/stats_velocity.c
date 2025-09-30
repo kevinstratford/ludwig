@@ -31,6 +31,11 @@ __global__ void stats_hydro_uminmax_kernel(kernel_3d_t k3d, hydro_t * hydro,
 					   double * umax);
 
 int stats_hydro_volume_flux(hydro_t * hydro, map_t * map);
+int stats_hydro_volume_flux_driver(hydro_t * hydro, map_t * map,
+				   double uflux[3]);
+__global__ void stats_hydro_volume_flux_kernel(kernel_3d_t k3d,
+					       hydro_t * hydro, map_t * map,
+					       double * uflux);
 
 /*****************************************************************************
  *
@@ -103,27 +108,7 @@ int stats_hydro_volume_flux(hydro_t * hydro, map_t * map) {
   assert(hydro);
   assert(map);
 
-  cs_nlocal(hydro->cs, nlocal);
-
-  for (int ic = 1; ic <= nlocal[X]; ic++) {
-    for (int jc = 1; jc <= nlocal[Y]; jc++) {
-      for (int kc = 1; kc <= nlocal[Z]; kc++) {
-
-        int index = cs_index(hydro->cs, ic, jc, kc);
-	int status = -1;
-	map_status(map, index, &status);
-
-	if (status == MAP_FLUID) {
-	  double utmp[3] = {0};
-	  hydro_u(hydro, index, utmp);
-
-	  usum_local[X] += utmp[X];
-	  usum_local[Y] += utmp[Y];
-	  usum_local[Z] += utmp[Z];
-	}
-      }
-    }
-  }
+  stats_hydro_volume_flux_driver(hydro, map, usum_local);
 
   {
     double usum[3] = {0};
@@ -138,6 +123,108 @@ int stats_hydro_volume_flux(hydro_t * hydro, map_t * map) {
   }
 
   return 0;
+}
+
+/*****************************************************************************
+ *
+ *  stats_hydro_volume_flux_driver
+ *
+ *****************************************************************************/
+
+int stats_hydro_volume_flux_driver(hydro_t * hydro, map_t * map,
+				   double uflux[3]) {
+
+  const int nsz = 3*sizeof(double);
+  int nlocal[3] = {0};
+  double * dflux = NULL;
+
+  assert(hydro);
+  assert(map);
+
+  cs_nlocal(map->cs, nlocal);
+
+  tdpAssert( tdpMalloc((void ** ) &dflux, nsz) );
+  tdpAssert( tdpMemcpy(dflux, uflux, nsz, tdpMemcpyHostToDevice) );
+
+  {
+    /* Kernel */
+    dim3 nblk = {};
+    dim3 ntpb = {};
+    cs_limits_t lim = {1, nlocal[X], 1, nlocal[Y], 1, nlocal[Z]};
+    kernel_3d_t k3d = kernel_3d(map->cs, lim);
+
+    kernel_3d_launch_param(k3d.kiterations, &nblk, &ntpb);
+    tdpLaunchKernel(stats_hydro_volume_flux_kernel, nblk, ntpb, 0, 0,
+                    k3d, hydro->target, map->target, dflux);
+
+    tdpAssert( tdpPeekAtLastError() );
+    tdpAssert( tdpStreamSynchronize(0) );
+  }
+
+  tdpAssert( tdpMemcpy(uflux, dflux, nsz, tdpMemcpyDeviceToHost) );
+  tdpAssert( tdpFree(dflux) );
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
+ *  stats_hydro_volume_flux_kernel
+ *
+ *****************************************************************************/
+
+__global__ void stats_hydro_volume_flux_kernel(kernel_3d_t k3d,
+					       hydro_t * hydro,
+					       map_t * map,
+					       double * uflux) {
+  int kindex = 0;
+  int tid = threadIdx.x;
+
+  __shared__ double tx[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double ty[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+  __shared__ double tz[TARGET_PAD*TARGET_MAX_THREADS_PER_BLOCK];
+
+  tx[TARGET_PAD*tid] = 0.0;
+  ty[TARGET_PAD*tid] = 0.0;
+  tz[TARGET_PAD*tid] = 0.0;
+
+  for_simt_parallel(kindex, k3d.kiterations, 1) {
+
+    int ic = kernel_3d_ic(&k3d, kindex);
+    int jc = kernel_3d_jc(&k3d, kindex);
+    int kc = kernel_3d_kc(&k3d, kindex);
+    int index  = kernel_3d_cs_index(&k3d, ic, jc, kc);
+    int status = MAP_BOUNDARY;
+
+    map_status(map, index, &status);
+
+    if (status == MAP_FLUID) {
+      double u[3] = {0};
+      hydro_u(hydro, index, u);
+      tx[TARGET_PAD*tid] += u[X];
+      ty[TARGET_PAD*tid] += u[Y];
+      tz[TARGET_PAD*tid] += u[Z];
+    }
+  }
+
+  __syncthreads();
+
+  if (tid == 0) {
+    /* Accumulate block totals */
+    double bflux[3] = {0};
+
+    for (int it = 0; it < blockDim.x; it++) {
+      bflux[X] += tx[TARGET_PAD*it];
+      bflux[Y] += ty[TARGET_PAD*it];
+      bflux[Z] += tz[TARGET_PAD*it];
+    }
+
+    tdpAtomicAddDouble(uflux + X, bflux[X]);
+    tdpAtomicAddDouble(uflux + Y, bflux[Y]);
+    tdpAtomicAddDouble(uflux + Z, bflux[Z]);
+  }
+
+  return;
 }
 
 /*****************************************************************************
