@@ -36,7 +36,7 @@ __host__ int test0(void) {
     printf("No GPU device detected\n");
   }
 
-  tdpGetDevice(&mydevice);
+  tdpAssert( tdpGetDevice(&mydevice) );
   ifail = tdpGetDeviceProperties(&prop, mydevice);
   if (ifail != tdpSuccess) printf("FAIL!\n");
 
