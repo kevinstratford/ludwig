@@ -421,7 +421,7 @@ __host__ int wall_init_boundaries(wall_t * wall, wall_init_enum_t init) {
     if (wall->linkp == NULL) pe_fatal(wall->pe,"calloc(wall->linkp) failed\n");
     if (wall->linku == NULL) pe_fatal(wall->pe,"calloc(wall->linku) failed\n");
     if (ndevice > 0) {
-      int tmp;
+      int * tmp = NULL;
       tdpAssert( tdpMalloc((void **) &tmp, wall->nlink*sizeof(int)) );
       tdpAssert( tdpMemcpy(&wall->target->linki, &tmp, sizeof(int *),
 			   tdpMemcpyHostToDevice) );
@@ -524,13 +524,13 @@ __host__ int wall_init_boundaries_slip(wall_t * wall) {
 
     /* Allocate device memory */
     if (ndevice > 0) {
-      int tmp;
+      int * tmp = NULL;
       tdpAssert( tdpMalloc((void **) &tmp, mlink*sizeof(int)) );
       tdpAssert (tdpMemcpy(&wall->target->linkk, &tmp, sizeof(int *),
 			   tdpMemcpyHostToDevice) );
     }
     if (ndevice > 0) {
-      int8_t tmp;
+      int8_t * tmp = NULL;
       tdpAssert( tdpMalloc((void **) &tmp, mlink*sizeof(int8_t)) );
       tdpAssert( tdpMemcpy(&wall->target->linkq, &tmp, sizeof(int8_t *),
 			   tdpMemcpyHostToDevice) );
