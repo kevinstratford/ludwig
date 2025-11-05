@@ -20,7 +20,7 @@
 #include "util.h"
 #include "stats_free_energy.h"
 
-int fe_stats_fluid_total(fe_t * fe, map_t * map, double sum[2]);
+int fe_stats_fluid_total(fe_t * fe, map_t * map, double sum[3]);
 __global__ void fe_stats_fluid_total_kernel(kernel_3d_t k3d, fe_t * fe,
 					    map_t * map, double * sum);
 
