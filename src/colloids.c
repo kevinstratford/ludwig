@@ -98,6 +98,121 @@ __host__ int colloids_info_create(pe_t * pe, cs_t * cs, int ncell[3],
 
 /*****************************************************************************
  *
+ *  colloids_info_initialise
+ *
+ *****************************************************************************/
+
+int colloids_info_initialise(pe_t * pe, cs_t * cs,
+			     const colloid_options_t * options,
+			     colloids_info_t * info) {
+
+  *info = (colloids_info_t) {0};
+
+  /* Halo and cell list extent (local) */
+  /* Halo extent is never anything other than 1 */
+  /* We start with no colloids */
+
+  info->nhalo    = 1;
+  info->ntotal   = 0;
+  info->ncell[X] = options->ncell[X];
+  info->ncell[Y] = options->ncell[Y];
+  info->ncell[Z] = options->ncell[Z];
+
+  /* memory strides in the cell list */
+  info->str[Z] = 1;
+  info->str[Y] = info->str[Z]*(info->ncell[Z] + 2*info->nhalo);
+  info->str[X] = info->str[Y]*(info->ncell[Y] + 2*info->nhalo);
+
+  cs_nsites(cs, &info->nsites);
+
+  info->nsubgrid = 0;
+  info->rebuild_freq = 1;      /* FIXME: option */
+  info->rho0 = options->rho0;
+  info->drmax = DRMAX_DEFAULT; /* FIXME: option */
+
+  info->isgravity   = 0;
+  info->isbuoyancy  = 0;
+  info->fgravity[X] = 0.0;
+  info->fgravity[Y] = 0.0;
+  info->fgravity[Z] = 0.0;
+  info->bgravity[X] = 0.0;
+  info->bgravity[Y] = 0.0;
+  info->bgravity[Z] = 0.0;
+
+  /* FIXME: some of the above are copies of options. Remove. */
+  info->options     = *options;
+
+  {
+    /* One halo cell at each end, in each direction */
+    int nx = info->ncell[X] + 2*info->nhalo;
+    int ny = info->ncell[Y] + 2*info->nhalo;
+    int nz = info->ncell[Z] + 2*info->nhalo;
+
+    info->ncells = nx*ny*nz;
+    info->clist  = (colloid_t **) calloc(info->ncells, sizeof(colloid_t *));
+
+    if (info->clist == NULL) goto err;
+  }
+
+  /* FIXME deal with map allocation here (malloc) */
+
+  info->pe = pe;
+  info->cs = cs;
+
+  /* Device memory */
+  {
+    int ndevice = 0;
+    tdpAssert( tdpGetDeviceCount(&ndevice) );
+
+    if (ndevice == 0) {
+      info->target = info;
+    }
+    else {
+      /* FIXME; try mallocManaged() */
+      tdpAssert( tdpMalloc((void **) &(info->target), sizeof(colloids_info_t)));
+      tdpAssert( tdpMemset(info->target, 0, sizeof(colloids_info_t)) );
+    }
+  }
+
+  return 0;
+
+ err:
+  return -1;
+}
+
+/*****************************************************************************
+ *
+ *  colloids_info_finalise
+ *
+ *****************************************************************************/
+
+int colloids_info_finalise(colloids_info_t * info) {
+
+  assert(info);
+
+  colloids_info_cell_list_clean(info);
+
+  free(info->clist);
+  free(info->map_old);
+  free(info->map_new);
+
+  {
+    int ndevice = 0;
+    tdpAssert( tdpGetDeviceCount(&ndevice) );
+
+    if (ndevice > 0) {
+      /* FIXME: free map new */
+      tdpAssert( tdpFree(info->target) );
+    }
+  }
+
+  *info = (colloids_info_t) {0};
+
+  return 0;
+}
+
+/*****************************************************************************
+ *
  *  colloids_info_free
  *
  *****************************************************************************/
@@ -202,26 +317,6 @@ __host__ int colloids_memcpy(colloids_info_t * info, int flag) {
       pe_exit(info->pe, "Bad flag in colloids_memcpy()\n");
     }
   }
-
-  return 0;
-}
-
-/*****************************************************************************
- *
- *  colloids_info_nallocated
- *
- *  Return number of colloid_t allocated.
- *  Just for book-keeping; there's no physical meaning.
- *
- *****************************************************************************/
-
-__host__
-int colloids_info_nallocated(colloids_info_t * cinfo, int * nallocated) {
-
-  assert(cinfo);
-  assert(nallocated);
-
-  *nallocated = cinfo->nallocated;
 
   return 0;
 }
@@ -1311,78 +1406,6 @@ __host__ int colloids_info_ahmax(colloids_info_t * cinfo, double * ahmax) {
 
   return 0;
 }
-
-/*****************************************************************************
- *
- *  colloids_number_sites
- *
- *  returns the total number of lattice sites affected by colloids
- *
- *****************************************************************************/
-
-__host__ int colloids_number_sites(colloids_info_t *cinfo) {
-
-  colloid_t * pc;
-  colloid_link_t * p_link;
-
-  /* All colloids, including halo */
-  colloids_info_all_head(cinfo, &pc);
-
-  int ncolsite=0;
-
-  for ( ; pc; pc = pc->nextall) {
-
-    p_link = pc->lnk;
-
-    for (; p_link; p_link = p_link->next) {
-
-      if (p_link->status == LINK_UNUSED) continue;
-
-      /* increment by 2 (outward and inward sites) */
-      ncolsite+=2;
-
-    }
-  }
-
-  return ncolsite;
-
-}
-
-/*****************************************************************************
- *
- *  colloid_list_sites
- *
- *  provides a list of lattice site indexes affected by colloids
- *
- *****************************************************************************/
-
-__host__ void colloids_list_sites(int* colloidSiteList, colloids_info_t *cinfo)
-{
-
-  colloid_t * pc;
-  colloid_link_t * p_link;
-
-  /* All colloids, including halo */
-  colloids_info_all_head(cinfo, &pc);
-
-  int ncolsite=0;
-
-  for ( ; pc; pc = pc->nextall) {
-
-    p_link = pc->lnk;
-
-    for (; p_link; p_link = p_link->next) {
-
-      if (p_link->status == LINK_UNUSED) continue;
-
-      colloidSiteList[ncolsite++]= p_link->i;
-      colloidSiteList[ncolsite++]= p_link->j;
-
-    }
-  }
-  return;
-}
-
 
 /*****************************************************************************
  *

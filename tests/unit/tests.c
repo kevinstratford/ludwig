@@ -57,6 +57,9 @@ __host__ int tests_create(int argc, char ** argv) {
   test_cs_limits_suite();
   test_le_suite();
 
+  test_colloid_options_suite();
+  /* test_colloid_io_impl_ansi_suite(); FIXME */
+
   /* i/o infrastructure */
   test_io_aggregator_suite();
   test_io_element_suite();

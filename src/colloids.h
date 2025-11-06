@@ -7,7 +7,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2010-2024 The University of Edinburgh
+ *  (c) 2010-2025 The University of Edinburgh
  *
  *  Contributing authors:
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
@@ -20,6 +20,7 @@
 #include "coords.h"
 #include "colloid.h"
 #include "colloid_link.h"
+#include "colloid_options.h"
 
 /* Auxiliary for diagnostic quantities (for output) */
 
@@ -114,6 +115,8 @@ struct colloids_info_s {
   double fgravity[3];         /* External "gravity" force (per colloid) */
   double bgravity[3];         /* External "buoyancy" force (per unit vol) */
 
+  colloid_options_t options;  /* Run time options */
+
   colloid_t ** clist;         /* Cell list pointers */
   colloid_t ** map_old;       /* Map (previous time step) pointers */
   colloid_t ** map_new;       /* Map (current time step) pointers */
@@ -130,7 +133,6 @@ __host__ int colloids_info_create(pe_t * pe, cs_t * cs, int ncell[3],
 __host__ void colloids_info_free(colloids_info_t * info);
 __host__ int colloids_info_recreate(int newcell[3], colloids_info_t ** pinfo);
 __host__ int colloids_memcpy(colloids_info_t * info, int flag);
-__host__ int colloids_info_nallocated(colloids_info_t * cinfo, int * nallocated);
 __host__ int colloids_info_rho0(colloids_info_t * cinfo, double * rho0);
 __host__ int colloids_info_rho0_set(colloids_info_t * cinfo, double rho0);
 __host__ int colloids_info_map_init(colloids_info_t * info);
@@ -173,8 +175,6 @@ __host__ int colloids_info_climits(colloids_info_t * cinfo, int ia, int ic, int 
 __host__ int colloids_info_a0max(colloids_info_t * cinfo, double * a0max);
 __host__ int colloids_info_ahmax(colloids_info_t * cinfo, double * ahmax);
 
-__host__ int colloids_number_sites(colloids_info_t *cinfo);
-__host__ void colloids_list_sites(int* colloidSiteList, colloids_info_t *cinfo);
 __host__ void colloids_q_boundary_normal(colloids_info_t * cinfo,
 					       const int index,
 					       const int di[3],
