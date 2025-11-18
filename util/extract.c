@@ -60,11 +60,12 @@
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *  Oliver Henrich  (oliver.henrich@strath.ac.uk)
  *
- *  (c) 2011-2023 The University of Edinburgh
+ *  (c) 2011-2025 The University of Edinburgh
  *
  ****************************************************************************/
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,7 +113,7 @@ int output_lcs_ = 0;
 int output_lcd_ = 0;
 int output_lcx_ = 0;
 
-int le_t0_ = 0;                /* LE offset start time (time steps) */ 
+int le_t0_ = 0;                /* LE offset start time (time steps) */
 
 int output_cmf_ = 0;           /* flag for output in column-major format */
 int output_q_raw_ = 0;         /* 0 -> LC s, director, b otherwise raw q5 */
@@ -184,7 +185,7 @@ int main(int argc, char ** argv) {
   for (optind = 1; optind < argc && argv[optind][0] == '-'; optind++) {
     switch (argv[optind][1]) {
     case 'a':
-      output_binary_ = 0; /* Request ASCII */ 
+      output_binary_ = 0; /* Request ASCII */
       break;
     case 'b':
       output_binary_ = 1; /* Request Binary */
@@ -197,7 +198,7 @@ int main(int argc, char ** argv) {
       break;
     case 'k':
       output_vtk_ = 1;    /* Request VTK header */
-      output_cmf_ = 1;    /* Request column-major format for Paraview */ 
+      output_cmf_ = 1;    /* Request column-major format for Paraview */
       break;
     case 'l':
       output_vtk_ = 2;
@@ -207,13 +208,13 @@ int main(int argc, char ** argv) {
       output_lcs_ = 1; /* Request liquid crystal scalar order parameter */
       break;
     case 'x':
-      output_lcx_ = 1; /* Request liquid crystal biaxial order paramter */
+      output_lcx_ = 1; /* Request liquid crystal biaxial order parameter */
       break;
     default:
       fprintf(stderr, "Unrecognised option: %s\n", argv[optind]);
       fprintf(stderr, "Usage: %s [-abk] meta-file data-file\n", argv[0]);
       exit(EXIT_FAILURE);
-    }   
+    }
   }
 
   /* New metadata format: completely short circuit the original
@@ -322,13 +323,13 @@ int extract_driver(const char * filename, metadata_v1_t * meta, int version) {
   default:
     printf("Invalid version %d\n", version);
   }
-    
+
   /* No. sites in the target section (always original at moment) */
 
   for (i = 0; i < 3; i++) {
     ntargets[i] = meta->ntotal[i];
   }
- 
+
   n = nrec_*ntargets[0]*ntargets[1]*ntargets[2];
   datasection = (double *) calloc(n, sizeof(double));
   if (datasection == NULL) printf("calloc(datasection) failed\n");
@@ -567,7 +568,7 @@ int read_version1(int ntime, metadata_v1_t * meta, double * datasection) {
 		     &meta->ntotal[0], &meta->ntotal[1], &meta->ntotal[2],
 		     &meta->offset[0], &meta->offset[1], &meta->offset[2]);
       if (ifail != 10) {
-	printf("Meta data rank ... not corrrect\n");
+	printf("Meta data rank ... not correct\n");
 	exit(-1);
       }
 
@@ -687,6 +688,18 @@ void read_meta_data_file(const char * filename, metadata_v1_t * meta) {
 		 &meta->ntotal[0], &meta->ntotal[1], &meta->ntotal[2]);
   if (ifail != 3) {
     printf("Meta data system size not read correctly\n");
+    exit(-1);
+  }
+  if (meta->ntotal[0] <= 0) {
+    printf("Meta data ntotal[X] <= 0 (= %d).\n", meta->ntotal[0]);
+    exit(-1);
+  }
+  if (meta->ntotal[1] <= 0) {
+    printf("Meta data ntotal[Y] <= 0 (= %d).\n", meta->ntotal[1]);
+    exit(-1);
+  }
+  if (meta->ntotal[2] <= 0) {
+    printf("Meta data ntotal[Z] <= 0 (= %d).\n", meta->ntotal[2]);
     exit(-1);
   }
   printf("System size is %d %d %d\n",
@@ -840,7 +853,7 @@ void read_data(FILE * fp_data, metadata_v1_t * meta, double * data) {
 	    nread = fread(&phi, sizeof(double), 1, fp_data);
 	    if (nread != 1) printf("File corrupted!\n");
 	    if(reverse_byte_order_){
-	       revphi = reverse_byte_order_double((char *) &phi); 
+	       revphi = reverse_byte_order_double((char *) &phi);
 	       phi = revphi;
 	    }
 	    *(data + nrec_*index + nr) = phi;
@@ -1019,11 +1032,17 @@ void le_unroll(metadata_v1_t * meta, double * data) {
 
   /* Allocate the temporary buffer */
 
-  ntmp = (size_t) nrec_*ntargets[1]*ntargets[2];
-  buffer = (double *) calloc(ntmp, sizeof(double));
-  if (buffer == NULL) {
-    printf("malloc(buffer) failed\n");
+  if (nrec_ > INT_MAX/(ntargets[1]*ntargets[2])) {
+    printf("System size too large\n");
     exit(-1);
+  }
+  else {
+    ntmp = (size_t) nrec_*ntargets[1]*ntargets[2];
+    buffer = (double *) calloc(ntmp, sizeof(double));
+    if (buffer == NULL) {
+      printf("malloc(buffer) failed\n");
+      exit(-1);
+    }
   }
 
   du[0] = 0.0;
@@ -1373,7 +1392,7 @@ int write_data_ascii_cmf(FILE * fp, int n[3], int nrec0, int nrec,
     for (jc = 1; jc <= n[1]; jc++) {
       for (ic = 1; ic <= n[0]; ic++) {
 	index = site_index(ic, jc, kc, n);
-      
+
 	if (output_index_) {
 	  fprintf(fp, "%4d %4d %4d ", ic, jc, kc);
 	}
@@ -1673,7 +1692,7 @@ int le_block_id(int nplanes, int nx, int ic) {
   int bid = 0;
 
   if (nplanes > 0) {
-    int s   = nx/nplanes;        /* Separation */ 
+    int s   = nx/nplanes;        /* Separation */
     int ic0 = nx/2;              /* Ref. is centre */
 
     if (nplanes % 2 == 0) {
