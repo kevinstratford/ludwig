@@ -1023,7 +1023,7 @@ void le_unroll(metadata_v1_t * meta, double * data) {
 
   int ic, jc, kc, n;
   int j0, j1, j2, j3, jdy;
-  size_t ntmp;
+  size_t ntmp = 0;
   double * buffer;
   double dy, fr;
   double du[3];
@@ -1032,7 +1032,9 @@ void le_unroll(metadata_v1_t * meta, double * data) {
 
   /* Allocate the temporary buffer */
 
-  if (nrec_ > INT_MAX/(ntargets[1]*ntargets[2])) {
+  ntmp = (size_t) ntargets[1]*ntargets[2];
+
+  if (nrec_ <= 0 || ntmp > (size_t) INT_MAX/nrec_) {
     printf("System size too large\n");
     exit(-1);
   }
