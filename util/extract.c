@@ -1861,9 +1861,15 @@ int extract_process_and_output(const char * stub, int ntime,
 
   {
     size_t nr = nrecord;
-    size_t n = nr*ntargets[0]*ntargets[1]*ntargets[2];
-    datasection = (double *) calloc(n, sizeof(double));
-    if (datasection == NULL) printf("calloc(datasection) failed\n");
+    size_t ns = (size_t) ntargets[0]*ntargets[1]*ntargets[2];
+    if (nr <= 0 || ns > (size_t) INT_MAX/nr) {
+      printf("System too large\n");
+      exit(-1);
+    }
+    else {
+      datasection = (double *) calloc(nr*ns, sizeof(double));
+      if (datasection == NULL) printf("calloc(datasection) failed\n");
+    }
   }
 
   extract_read_single_file(meta, stub, ntime, datasection);
