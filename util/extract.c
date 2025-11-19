@@ -1862,7 +1862,7 @@ int extract_process_and_output(const char * stub, int ntime,
   {
     size_t nr = nrecord;
     size_t ns = (size_t) ntargets[0]*ntargets[1]*ntargets[2];
-    if (nr <= 0 || ns > (size_t) INT_MAX/nr) {
+    if (ns > (size_t) INT_MAX/nr) {
       printf("System too large\n");
       exit(-1);
     }
