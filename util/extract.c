@@ -1734,7 +1734,7 @@ double le_block_displacement_uyt(const cs_t * cs, int ic, int itime) {
 
 /* A function of time only for non-steady shear. */
 
-double le_block_uy(cs_t * cs, int ic, int itime) {
+double le_block_uy(cs_t * cs, int ic) {
 
   int nplanes = cs->leopts.nplanes;
   int nx = cs->param->ntotal[X];
@@ -1787,9 +1787,9 @@ int extract_unroll(const io_metadata_t * meta, double * data, int itime,
     double dy = le_block_displacement_uyt(meta->cs, ic, itime);
     int   jdy = floor(dy);
     double fr = 1.0 - (dy - jdy);
-    if (is_vel) du[Y] = le_block_uy(meta->cs, ic, itime);
+    if (is_vel) du[Y] = le_block_uy(meta->cs, ic);
     printf("time %6d ic %3d  uyt %7.3f dv %7.4f %3d\n" , itime, ic, dy,
-	   le_block_uy(meta->cs, ic, itime),
+	   le_block_uy(meta->cs, ic),
 	   le_block_id(meta->cs->leopts.nplanes, ntotal[X], ic));
 
     for (int jc = 1; jc <= ntotal[Y]; jc++) {
