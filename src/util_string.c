@@ -25,7 +25,7 @@
 
 size_t util_strnlen(const char * s, size_t maxlen) {
 
-  const char * nullchar = memchr((const void *) s, '\0', maxlen);
+  const char * nullchar = (const char *) memchr(s, '\0', maxlen);
 
   return nullchar ? (size_t) (nullchar - s) : maxlen;
 }
