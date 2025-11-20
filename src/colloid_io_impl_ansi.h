@@ -2,10 +2,12 @@
  *
  *  colloid_io_impl_ansi.h
  *
- *  (c) 2025 The University of Edinburgh
- *
  *  Edinburgh Soft MAtter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2025 The University of Edinburgh
+ *
+ *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
  *****************************************************************************/
 
@@ -14,16 +16,6 @@
 
 #include "colloid_io_impl.h"
 #include "io_subfile.h"
-
-
-/* State array container FIXME relocate */
-typedef struct colloid_array_s {
-  int ntotal;
-  colloid_state_t * data;
-} colloid_array_t;
-
-int colloid_array_initialise(int ntotal, colloid_array_t * array);
-int colloid_array_finalise(colloid_array_t * array);
 
 typedef struct colloid_io_ansi_s colloid_io_ansi_t;
 

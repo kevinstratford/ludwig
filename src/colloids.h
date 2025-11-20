@@ -190,4 +190,9 @@ __host__ int colloids_ellipsoid_abc_check(colloids_info_t * info);
 __host__ int colloids_buoyancy_set(colloids_info_t * cinfo, const double b[3]);
 __host__ int colloids_gravity_set(colloids_info_t * cinfo, const double g[3]);
 
+int colloids_info_initialise(pe_t * pe, cs_t * cs,
+			     const colloid_options_t * options,
+			     colloids_info_t * info);
+int colloids_info_finalise(colloids_info_t * info);
+
 #endif

@@ -100,6 +100,19 @@ __host__ int colloids_info_create(pe_t * pe, cs_t * cs, int ncell[3],
  *
  *  colloids_info_initialise
  *
+ *  Memory management:
+ *
+ *  There will be a host copy which will contain, at least:
+ *    - host allocated map storage;
+ *    - host allocated storage for linked list of colloids;
+ *    - managed memory colloid_array_t for contiguous storage of colloid
+ *      references allowing use in kernels;
+ *
+ *  There will also be a target copy held itself in managed memory,
+ *  including
+ *    - explicit device allocations for map (lattice) data;
+ *    - copy of relevant managed pointers for colloid data;
+ *
  *****************************************************************************/
 
 int colloids_info_initialise(pe_t * pe, cs_t * cs,
@@ -154,7 +167,17 @@ int colloids_info_initialise(pe_t * pe, cs_t * cs,
     if (info->clist == NULL) goto err;
   }
 
-  /* FIXME deal with map allocation here (malloc) */
+  /* The map is only needed if colloids are present. */
+
+  if (info->options.have_colloids) {
+
+    info->map_old = (colloid_t **) malloc(info->nsites*sizeof(colloid_t *));
+    info->map_new = (colloid_t **) malloc(info->nsites*sizeof(colloid_t *));
+    assert(info->map_old);
+    assert(info->map_new);
+    if (info->map_old == NULL) goto err;
+    if (info->map_new == NULL) goto err;
+  }
 
   info->pe = pe;
   info->cs = cs;
@@ -168,7 +191,11 @@ int colloids_info_initialise(pe_t * pe, cs_t * cs,
       info->target = info;
     }
     else {
-      /* FIXME; try mallocManaged() */
+      /* The target copy itself will be managed. */
+      /* Lattice quantities (map) will be explicitly allocated */
+      /* Colloid quantities will be managed, and are therefore
+       * just a copy of the relevant managed pointer in the host copy. */
+
       tdpAssert( tdpMalloc((void **) &(info->target), sizeof(colloids_info_t)));
       tdpAssert( tdpMemset(info->target, 0, sizeof(colloids_info_t)) );
     }
@@ -177,6 +204,11 @@ int colloids_info_initialise(pe_t * pe, cs_t * cs,
   return 0;
 
  err:
+
+  free(info->map_new);
+  free(info->map_old);
+  free(info->clist);
+
   return -1;
 }
 

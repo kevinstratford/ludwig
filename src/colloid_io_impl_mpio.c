@@ -179,8 +179,8 @@ int colloid_io_mpio_read(colloid_io_mpio_t * io, const char * filename) {
   if (ifail != 0) goto err;
 
   {
-    int asc = 1; /* FIXME from options please */
-    int bin = 0; /* FIXME */
+    int asc = (io->info->options.input.iorformat == IO_RECORD_ASCII);
+    int bin = (io->info->options.input.iorformat == IO_RECORD_BINARY);
     if (asc) ifail = colloid_io_mpio_read_ascii(io, fp);
     if (bin) ifail = colloid_io_mpio_read_binary(io, fp);
 
@@ -332,7 +332,7 @@ int colloid_io_mpio_read_ascii(colloid_io_mpio_t * io, FILE * fp) {
   assert(io);
   assert(fp);
 
-  int nr = fscanf(fp, "%22d\n", &nread);
+  int nr = fscanf(fp, "%22d", &nread);
   if (nr != 1) goto err;
 
   for (int n = 0; n < nread; n++) {
@@ -342,7 +342,7 @@ int colloid_io_mpio_read_ascii(colloid_io_mpio_t * io, FILE * fp) {
     nr = fread(buf, COLLOID_BUFSZ*sizeof(char), 1, fp);
     if (nr != 1) goto err;
     ifail = colloid_state_io_read_buf_ascii(&s, buf);
-    if (ifail == 0) goto err;
+    if (ifail != 0) goto err;
     /* Add if local and assign the state */
     {
       colloid_t * pc = NULL;
@@ -354,12 +354,13 @@ int colloid_io_mpio_read_ascii(colloid_io_mpio_t * io, FILE * fp) {
  err:
 
   /* This is collective so cannot by-pass on error */
+  /* Set the total number of colloids (all ranks). This must agree with
+   * the number in the file header. */
   {
-    int ntotal = 0;
     int nlocal = 0;
     colloids_info_nlocal(io->info, &nlocal);
-    MPI_Allreduce(&nlocal, &ntotal, 1, MPI_INT, MPI_SUM, io->comm);
-    if (ntotal != nread) ifail = -1;
+    MPI_Allreduce(&nlocal, &io->info->ntotal, 1, MPI_INT, MPI_SUM, io->comm);
+    if (io->info->ntotal != nread) ifail = -1;
   }
    
 
@@ -393,7 +394,7 @@ int colloid_io_mpio_read_binary(colloid_io_mpio_t * io, FILE * fp) {
     nr = fread(buf, nbufsz, 1, fp);
     if (nr != 1) goto err;
     ifail = colloid_state_io_read_buf(&s, buf);
-    if (ifail == 0) goto err;
+    if (ifail != 0) goto err;
     /* Add if local and assign the state */
     {
       colloid_t * pc = NULL;
@@ -410,12 +411,10 @@ int colloid_io_mpio_read_binary(colloid_io_mpio_t * io, FILE * fp) {
   /* FIXME: THIS IS NO GOOD IF NFILES > 1 (need the xcomm) */
   {
     int nlocal = 0;
-    int ntotal = 0;
     colloids_info_nlocal(io->info, &nlocal);
-    MPI_Allreduce(&nlocal, &ntotal, 1, MPI_INT, MPI_SUM, io->comm);
-    if (ntotal != nread) ifail = -1;
+    MPI_Allreduce(&nlocal, &io->info->ntotal, 1, MPI_INT, MPI_SUM, io->comm);
+    if (io->info->ntotal != nread) ifail = -1;
   }
-  /* If the total is corrent, then we can set the info total */
 
   return ifail;
 }

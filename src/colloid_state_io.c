@@ -194,11 +194,11 @@ int colloid_state_io_read_buf_ascii(colloid_state_t * s, const char * buf) {
     ifail = -1;
   }
   else {
-    /* Make sure there is a \0 before we get to sscanf, hence the memcpy() */
-    int nr = 0;                       /* number of char read */
+    int nr = 0;               /* number of items assigned by ascanf() */
     int sz = 25*sizeof(char);
     char tmp[BUFSIZ] = {0};
 
+    /* Make sure there is a \0 before we get to sscanf, hence the memcpy() */
     memcpy(tmp, buf +  0*sz, sz); nr += sscanf(tmp, "%d", &s->index);
     memcpy(tmp, buf +  1*sz, sz); nr += sscanf(tmp, "%d", &s->rebuild);
     memcpy(tmp, buf +  2*sz, sz); nr += sscanf(tmp, "%d", &s->nbonds);
@@ -233,7 +233,7 @@ int colloid_state_io_read_buf_ascii(colloid_state_t * s, const char * buf) {
     memcpy(tmp, buf + 30*sz, sz); nr += sscanf(tmp, "%d", &s->intpad[5]);
     memcpy(tmp, buf + 31*sz, sz); nr += sscanf(tmp, "%d", &s->intpad[6]);
 
-    if (nr != 32*sz) ifail = -1;
+    if (nr != 32) ifail = -1;
 
     /* Doubles */
     memcpy(tmp, buf + 32*sz, sz); nr += sscanf(tmp, "%le", &s->a0);
@@ -288,7 +288,7 @@ int colloid_state_io_read_buf_ascii(colloid_state_t * s, const char * buf) {
     memcpy(tmp, buf + 78*sz, sz); nr += sscanf(tmp, "%le", &s->dpad[2]);
     memcpy(tmp, buf + 79*sz, sz); nr += sscanf(tmp, "%le", &s->dpad[3]);
 
-    if (nr != NTOT_VAR*sz) ifail = -2;
+    if (nr != NTOT_VAR) ifail = -(1 + nr);
   }
 
   return ifail;

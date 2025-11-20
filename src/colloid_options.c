@@ -5,6 +5,14 @@
  *  Container for options required to instantiate the colloid_info_t
  *  management object.
  *
+ *
+ *  Edinburgh Soft Matter and Statistical Physics Group and
+ *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2025 The University of Edinburgh
+ *
+ *  Kevin Stratford (kevin@epcc.ed.ac.uk)
+ *
  *****************************************************************************/
 
 #include <assert.h>
@@ -14,181 +22,8 @@
 #include "util_json.h"
 #include "util.h"
 
-static const double RHO_ZERO_DEFAULT = 1.0;
-
-/*****************************************************************************
- *
- *  colloid_io_mode_valid
- *
- *****************************************************************************/
-
-int colloid_io_mode_valid(colloid_io_mode_enum_t mode) {
-
-  int valid = 0;
-
-  switch (mode) {
-  case COLLOID_IO_MODE_ANSI:
-  case COLLOID_IO_MODE_MPIIO:
-    valid = 1;
-    break;
-  default:
-    valid = 0;
-  }
-
-  return valid;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_mode_to_string
- *
- *****************************************************************************/
-
-const char * colloid_io_mode_to_string(colloid_io_mode_enum_t mode) {
-
-  const char * str = NULL;
-
-  switch (mode) {
-  case COLLOID_IO_MODE_ANSI:
-    str = "ansi";
-    break;
-  case COLLOID_IO_MODE_MPIIO:
-    str = "mpiio";
-    break;
-  default:
-    str = "invalid";
-  }
-
-  return str;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_mode_from_string
- *
- *****************************************************************************/
-
-colloid_io_mode_enum_t colloid_io_mode_from_string(const char * str) {
-
-  colloid_io_mode_enum_t mode = COLLOID_IO_MODE_INVALID;
-  char value[BUFSIZ] = {0};
-
-  strncpy(value, str, BUFSIZ-1);
-  util_str_tolower(value, strlen(value));
-
-  if (strcmp(value, "ansi")  == 0) mode = COLLOID_IO_MODE_ANSI;
-  if (strcmp(value, "mpiio") == 0) mode = COLLOID_IO_MODE_MPIIO; 
-
-  return mode;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_options_default
- *
- *****************************************************************************/
-
-colloid_io_options_t colloid_io_options_default(void) {
-
-  colloid_io_options_t opts = {
-    .mode      = COLLOID_IO_MODE_ANSI,
-    .iorformat = IO_RECORD_ASCII,
-    .report    = 0,
-    .iogrid    = {1, 1, 1}
-  };
-
-  return opts;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_options_valid
- *
- *****************************************************************************/
-
-int colloid_io_options_valid(const colloid_io_options_t * opts) {
-
-  int valid = 1;
-
-  if (0 == colloid_io_mode_valid(opts->mode)) valid = 0;
-  if (0 == io_options_record_format_valid(opts->iorformat)) valid = 0;
-
-  return valid;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_options_to_json
- *
- *****************************************************************************/
-
-int colloid_io_options_to_json(const colloid_io_options_t * opts,
-			       cJSON ** json) {
-  int ifail = 0;
-
-  if (opts == NULL || json == NULL) {
-    ifail = -1;
-  }
-  else {
-    cJSON * myjson = cJSON_CreateObject();
-    cJSON * iogrid = cJSON_CreateIntArray(opts->iogrid, 3);
-
-    cJSON_AddStringToObject(myjson, "I/O mode",
-			    colloid_io_mode_to_string(opts->mode));
-    cJSON_AddStringToObject(myjson, "Format",
-			    io_record_format_to_string(opts->iorformat));
-    cJSON_AddBoolToObject(myjson, "Report", opts->report);
-    cJSON_AddItemToObject(myjson, "I/O grid", iogrid);
-
-    *json = myjson;
-  }
-
-  return ifail;
-}
-
-/*****************************************************************************
- *
- *  colloid_io_options_from_json
- *
- *****************************************************************************/
-
-int colloid_io_options_from_json(const cJSON * json,
-				 colloid_io_options_t * opts) {
-  int ifail = 0;
-
-  if (json == NULL || opts == NULL) {
-    ifail = -1;
-  }
-  else {
-    /* We expect four key/value pairs */
-    cJSON * mode   = cJSON_GetObjectItemCaseSensitive(json, "I/O mode");
-    cJSON * format = cJSON_GetObjectItemCaseSensitive(json, "Format");
-    cJSON * report = cJSON_GetObjectItemCaseSensitive(json, "Report");
-    cJSON * iogrid = cJSON_GetObjectItemCaseSensitive(json, "I/O grid");
-
-    if (mode   == NULL) ifail += 1;
-    if (format == NULL) ifail += 2;
-    if (report == NULL) ifail += 4;
-    if (iogrid == NULL) ifail += 8;
-
-    if (mode) {
-      char * str = cJSON_GetStringValue(mode);
-      opts->mode = colloid_io_mode_from_string(str);
-    }
-    if (format) {
-      char * str = cJSON_GetStringValue(format);
-      opts->iorformat = io_record_format_from_string(str);
-    }
-
-    if (report) opts->report = cJSON_IsTrue(report);
-
-    if (iogrid) {
-      if (3 != util_json_to_int_array(iogrid, opts->iogrid, 3)) ifail += 16;
-    }
-  }
-
-  return ifail;
-}
+static const double RHO_ZERO_DEFAULT      = 1.0; /* unit density lb units */
+static const int    HAVE_COLLOIDS_DEFAULT = 0;   /* no colloids */
 
 /*****************************************************************************
  *
@@ -197,15 +32,53 @@ int colloid_io_options_from_json(const cJSON * json,
  *****************************************************************************/
 
 colloid_options_t colloid_options_default(void) {
-  
+
+  /* Default is no colloids, but other values are required. */
+
   colloid_options_t options = {
-    .ncell  = {2, 2, 2},                      /* min. local list dimensions */
-    .nvel   = 19,                             /* default bbl model */
-    .rho0   = RHO_ZERO_DEFAULT,
-    .input  = colloid_io_options_default(),
-    .output = colloid_io_options_default(),
-    .nfreq  = 0                               /* No output */
+      .ncell  = {2, 2, 2},                   /* min. local list dimensions */
+      .nvel   = 19,                          /* default bbl model */
+      .rho0   = RHO_ZERO_DEFAULT,
+      .input  = colloid_io_options_default(),
+      .output = colloid_io_options_default(),
+      .nfreq  = 0,                           /* No output */
+
+      .have_colloids = HAVE_COLLOIDS_DEFAULT /* colloids expected or not */
   };
+
+  return options;
+}
+
+/*****************************************************************************
+ *
+ *  colloid_options_have_colloids
+ *
+ *****************************************************************************/
+
+colloid_options_t colloid_options_have_colloids(int have_colloids) {
+
+  colloid_options_t options = colloid_options_default();
+
+  options.have_colloids = have_colloids;
+
+  return options;
+}
+
+/*****************************************************************************
+ *
+ *  colloid_options_ncell
+ *
+ *****************************************************************************/
+
+colloid_options_t colloid_options_ncell(const int ncell[3]) {
+
+  colloid_options_t options = colloid_options_default();
+
+  /* Request for ncell => have_colloids */
+  options.have_colloids = 1;
+  options.ncell[0]      = ncell[0];
+  options.ncell[1]      = ncell[1];
+  options.ncell[2]      = ncell[2];
 
   return options;
 }
@@ -260,19 +133,24 @@ int colloid_options_to_json(const colloid_options_t * opts, cJSON ** json) {
     ifail = -1;
   }
   else {
+    /* Create new JSON object ... */
     cJSON * myjson = cJSON_CreateObject();
     cJSON * ncell  = cJSON_CreateIntArray(opts->ncell, 3);
 
-    cJSON_AddItemToObject(myjson,   "ncell", ncell);
+    cJSON_AddBoolToObject(myjson, "have_colloids", opts->have_colloids);
+    cJSON_AddItemToObject(myjson, "ncell", ncell);
     cJSON_AddNumberToObject(myjson, "nvel", opts->nvel);
     cJSON_AddNumberToObject(myjson, "rho0", opts->rho0);
 
     {
-      cJSON * input = NULL;
+      cJSON * input  = NULL;
       cJSON * output = NULL;
+
+      /* input */
       ifail = colloid_io_options_to_json(&opts->input, &input);
       if (ifail == 0) cJSON_AddItemToObject(myjson, "Input options", input);
 
+      /* output */
       ifail = colloid_io_options_to_json(&opts->output, &output);
       if (ifail == 0) cJSON_AddItemToObject(myjson, "Output options", output);
     }
@@ -289,7 +167,7 @@ int colloid_options_to_json(const colloid_options_t * opts, cJSON ** json) {
  *
  *  colloid_options_from_json
  *
- *  FIXME: all mandatory. optional elements wanted?
+ *  FIXME: decide what is mandatory, and what is optional.
  *
  *****************************************************************************/
 
@@ -302,6 +180,7 @@ int colloid_options_from_json(const cJSON * json, colloid_options_t * opts) {
   }
   else {
     /* all elements currently required to be present */
+    cJSON * have   = cJSON_GetObjectItemCaseSensitive(json, "have_colloids");
     cJSON * ncell  = cJSON_GetObjectItemCaseSensitive(json, "ncell");
     cJSON * nvel   = cJSON_GetObjectItemCaseSensitive(json, "nvel");
     cJSON * rho0   = cJSON_GetObjectItemCaseSensitive(json, "rho0");
@@ -309,16 +188,18 @@ int colloid_options_from_json(const cJSON * json, colloid_options_t * opts) {
     cJSON * output = cJSON_GetObjectItemCaseSensitive(json, "Output options");
     cJSON * nfreq  = cJSON_GetObjectItemCaseSensitive(json, "nfreq");
 
-    if (3 != util_json_to_int_array(ncell, opts->ncell, 3))       ifail +=  1;
-    if (0 == cJSON_IsNumber(nvel))                                ifail +=  2;
-    if (0 == cJSON_IsNumber(rho0))                                ifail +=  4;
+    if (0 == cJSON_IsBool(have))                                  ifail +=  1;
+    if (3 != util_json_to_int_array(ncell, opts->ncell, 3))       ifail +=  2;
+    if (0 == cJSON_IsNumber(nvel))                                ifail +=  4;
+    if (0 == cJSON_IsNumber(rho0))                                ifail +=  8;
 
+    if (have) opts->have_colloids = cJSON_IsTrue(have);
     if (nvel) opts->nvel = cJSON_GetNumberValue(nvel);
     if (rho0) opts->rho0 = cJSON_GetNumberValue(rho0);
 
-    if (0 != colloid_io_options_from_json(input, &opts->input))   ifail +=  8;
-    if (0 != colloid_io_options_from_json(output, &opts->output)) ifail += 16;
-    if (0 == cJSON_IsNumber(nfreq))                               ifail += 32;
+    if (0 != colloid_io_options_from_json(input, &opts->input))   ifail += 16;
+    if (0 != colloid_io_options_from_json(output, &opts->output)) ifail += 32;
+    if (0 == cJSON_IsNumber(nfreq))                               ifail += 64;
 
     if (nfreq) opts->nfreq = cJSON_GetNumberValue(nfreq);
   }

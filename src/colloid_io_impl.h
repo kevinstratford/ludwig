@@ -15,7 +15,7 @@
 #include "colloids.h"
 
 typedef struct colloid_io_impl_vt_s colloid_io_impl_vt_t;
-typedef struct colloid_io_impl_s colloid_io_impl_t;
+typedef struct colloid_io_impl_s    colloid_io_impl_t;
 
 /* destructor */
 
@@ -23,22 +23,31 @@ typedef void (* colloid_io_impl_free_ft) (colloid_io_impl_t ** io);
 
 /* Synchronous read / write */
 
-typedef int (* colloid_io_impl_read_ft) (colloid_io_impl_t * io,
-					 const char * filename);
+typedef int (* colloid_io_impl_read_ft)  (colloid_io_impl_t * io,
+                                          const char *        filename);
 typedef int (* colloid_io_impl_write_ft) (colloid_io_impl_t * io,
-					  const char * filename);
+                                          const char *        filename);
 
 struct colloid_io_impl_vt_s {
-  colloid_io_impl_free_ft  free;          /* Destructor */
-  colloid_io_impl_read_ft  read;          /* Synchronous read */
-  colloid_io_impl_write_ft write;         /* Synchronous write */
+  colloid_io_impl_free_ft  free;  /* Destructor */
+  colloid_io_impl_read_ft  read;  /* Synchronous read */
+  colloid_io_impl_write_ft write; /* Synchronous write */
 };
 
 struct colloid_io_impl_s {
-  const colloid_io_impl_vt_t * impl;      /* Implementation */
+  const colloid_io_impl_vt_t * impl; /* Implementation */
 };
 
-/* FIXME: needs colloid_io_options_t to allow differentiation of i/o */
-int colloid_io_impl_create(const colloids_info_t * info,
-			   colloid_io_impl_t ** io);
+/* Instantiate an implementation based on mode ... */
+/* which must be either input or output.           */
+/* The input/output versions are a convenience.    */
+
+int colloid_io_impl_create(colloid_io_mode_enum_t  mode,
+                           const colloids_info_t * info,
+                           colloid_io_impl_t **    io);
+int colloid_io_impl_input(const colloids_info_t * info,
+                          colloid_io_impl_t **    io);
+int colloid_io_impl_output(const colloids_info_t * info,
+                           colloid_io_impl_t **    io);
+
 #endif
