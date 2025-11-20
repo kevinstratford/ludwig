@@ -42,8 +42,7 @@ int test_colloid_state_io_suite(void) {
   test_colloid_state_io_write_buf();
   test_colloid_state_io_read_buf();
   test_colloid_state_io_write_buf_ascii();
-  test_colloid_state_io_read_buf();
-
+  test_colloid_state_io_read_buf_ascii();
 
   pe_info(pe, "%-9s %s\n", "PASS", __FILE__);
   pe_free(pe);
@@ -147,9 +146,10 @@ int test_colloid_state_io_read_buf_ascii(void) {
     char buf[1 + COLLOID_BUFSZ] = {0};
     int same = 0;
 
-    ifail = colloid_state_io_write_buf(&sw, buf);
+    sw.ioversion = 240; /* FIXME This is in colloid_state_io.c ! */
+    ifail = colloid_state_io_write_buf_ascii(&sw, buf);
     assert(ifail == 0);
-    ifail = colloid_state_io_read_buf(&sr, buf);
+    ifail = colloid_state_io_read_buf_ascii(&sr, buf);
     assert(ifail == 0);
     same = util_test_colloid_state_same(&sw, &sr);
     if (same == 0) ifail = -1;

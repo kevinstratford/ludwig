@@ -1,29 +1,28 @@
 /*****************************************************************************
  *
- *  test_colloid_io_impl_ansi.c
+ *  test_colloid_io_impl_mpio.c
  *
  *****************************************************************************/
 
 #include <assert.h>
 
-#include <errno.h>
-#include <string.h>
+#include "colloid_io_impl_mpio.h"
 
-#include "colloid_io_impl_ansi.h"
+int test_colloid_io_mpio_initialise(pe_t * pe);
+int test_colloid_io_mpio_finalise(pe_t * pe);
+int test_colloid_io_mpio_create(pe_t * pe);
+int test_colloid_io_mpio_free(pe_t * pe);
 
-int test_colloid_io_ansi_initialise(pe_t * pe);
-int test_colloid_io_ansi_create(pe_t * pe);
-
-int test_colloid_io_ansi_read(pe_t * pe);
-int test_colloid_io_ansi_write(pe_t * pe);
+int test_colloid_io_mpio_read(pe_t * pe);
+int test_colloid_io_mpio_write(pe_t * pe);
 
 /*****************************************************************************
  *
- *  test_colloid_io_impl_ansi_suite
+ *  test_colloid_io_impl_mpio_suite
  *
  *****************************************************************************/
 
-int test_colloid_io_impl_ansi_suite(void) {
+int test_colloid_io_impl_mpio_suite(void) {
 
   int    ifail = 0;
   pe_t * pe    = NULL;
@@ -31,13 +30,15 @@ int test_colloid_io_impl_ansi_suite(void) {
   pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
 
   /* If struct changes, the tests need updating... */
-  assert(sizeof(colloid_io_ansi_t) == 80);
+  assert(sizeof(colloid_io_mpio_t) == 80);
 
-  test_colloid_io_ansi_initialise(pe);
-  test_colloid_io_ansi_create(pe);
+  test_colloid_io_mpio_initialise(pe);
+  test_colloid_io_mpio_finalise(pe);
+  test_colloid_io_mpio_create(pe);
+  test_colloid_io_mpio_free(pe);
 
-  test_colloid_io_ansi_read(pe);
-  test_colloid_io_ansi_write(pe);
+  test_colloid_io_mpio_read(pe);
+  test_colloid_io_mpio_write(pe);
 
   pe_info(pe, "%-9s %s\n", "PASS", __FILE__);
   pe_free(pe);
@@ -47,11 +48,11 @@ int test_colloid_io_impl_ansi_suite(void) {
 
 /*****************************************************************************
  *
- *  test_colloid_io_ansi_initialise
+ *  test_colloid_io_mpio_initialise
  *
  *****************************************************************************/
 
-int test_colloid_io_ansi_initialise(pe_t * pe) {
+int test_colloid_io_mpio_initialise(pe_t * pe) {
 
   int    ifail = 0;
   cs_t * cs    = NULL;
@@ -62,23 +63,21 @@ int test_colloid_io_ansi_initialise(pe_t * pe) {
   {
     int               ncell[3] = {8, 8, 8};
     colloids_info_t * info     = NULL;
-    colloid_io_ansi_t io       = {0};
+    colloid_io_mpio_t io       = {0};
 
     colloids_info_create(pe, cs, ncell, &info);
-    ifail = colloid_io_ansi_initialise(info, &io);
+    ifail = colloid_io_mpio_initialise(info, &io);
     assert(ifail == 0);
 
-    /* subfile exists ... */
+    /* Subfile must be single file: */
     assert(io.subfile.nfile == 1);
     assert(io.subfile.index == 0);
 
-    /* new communicator exists */
+    /* Communicator */
     assert(io.comm != MPI_COMM_NULL);
-    assert(io.comm != cs->commcart);
 
-    colloid_io_ansi_finalise(&io);
+    colloid_io_mpio_finalise(&io);
     colloids_info_free(info);
-    assert(io.comm == MPI_COMM_NULL);
   }
 
   cs_free(cs);
@@ -88,11 +87,41 @@ int test_colloid_io_ansi_initialise(pe_t * pe) {
 
 /*****************************************************************************
  *
- *  test_colloid_io_ansi_create
+ *  test_colloid_io_mpio_finalise
  *
  *****************************************************************************/
 
-int test_colloid_io_ansi_create(pe_t * pe) {
+int test_colloid_io_mpio_finalise(pe_t * pe) {
+
+  int    ifail = 0;
+  int    ncell[3] = {8, 8, 8};
+  cs_t * cs    = NULL;
+
+  colloids_info_t * info     = NULL;
+  colloid_io_mpio_t io       = {0};
+
+  cs_create(pe, &cs);
+  cs_init(cs);
+  colloids_info_create(pe, cs, ncell, &info);
+
+  ifail = colloid_io_mpio_initialise(info, &io);
+  colloid_io_mpio_finalise(&io);
+  assert(io.info == NULL);
+  assert(io.comm == MPI_COMM_NULL);
+
+  colloids_info_free(info);
+  cs_free(cs);
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_colloid_io_mpio_create
+ *
+ *****************************************************************************/
+
+int test_colloid_io_mpio_create(pe_t * pe) {
 
   int    ifail = 0;
   cs_t * cs    = NULL;
@@ -103,16 +132,15 @@ int test_colloid_io_ansi_create(pe_t * pe) {
   {
     int                 ncell[3] = {8, 8, 8};
     colloids_info_t *   info     = NULL;
-    colloid_io_ansi_t * io       = NULL;
+    colloid_io_mpio_t * io       = NULL;
 
     colloids_info_create(pe, cs, ncell, &info);
-    ifail = colloid_io_ansi_create(info, &io);
+    ifail = colloid_io_mpio_create(info, &io);
     assert(ifail == 0);
     assert(io->comm != MPI_COMM_NULL);
 
-    colloid_io_ansi_free(&io);
+    colloid_io_mpio_free(&io);
     colloids_info_free(info);
-    assert(io == NULL);
   }
 
   cs_free(cs);
@@ -122,11 +150,42 @@ int test_colloid_io_ansi_create(pe_t * pe) {
 
 /*****************************************************************************
  *
- *  test_colloid_io_ansi_read
+ *  test_colloid_io_impl_mpio_free
  *
  *****************************************************************************/
 
-int test_colloid_io_ansi_read(pe_t * pe) {
+int test_colloid_io_mpio_free(pe_t * pe) {
+
+  int    ifail = 0;
+  int    ncell[3] = {8, 8, 8};
+  cs_t * cs    = NULL;
+
+  colloids_info_t *   info     = NULL;
+  colloid_io_mpio_t * io       = NULL;
+
+  cs_create(pe, &cs);
+  cs_init(cs);
+  colloids_info_create(pe, cs, ncell, &info);
+
+  /* The test, such as it is ... */
+  ifail = colloid_io_mpio_create(info, &io);
+  colloid_io_mpio_free(&io);
+  assert(ifail == 0);
+  assert(io    == NULL);
+
+  colloids_info_free(info);
+  cs_free(cs);
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_colloid_io_mpio_read
+ *
+ *****************************************************************************/
+
+int test_colloid_io_mpio_read(pe_t * pe) {
 
   int    ifail = 0;
   cs_t * cs    = NULL;
@@ -135,34 +194,38 @@ int test_colloid_io_ansi_read(pe_t * pe) {
   cs_init(cs);
 
   /* Read from existing ASCII file. */
+  /* Using the explicit interface, one doesn't need to set
+   * options io mode. This could be an error. */
   {
     int                 ncell[3] = {3, 3, 3};
     colloid_options_t   opts     = colloid_options_ncell(ncell);
     colloids_info_t     info     = {0};
-    colloid_io_ansi_t * io       = NULL;
+    colloid_io_mpio_t * io       = NULL;
 
     colloids_info_initialise(pe, cs, &opts, &info);
 
     /* ASCII read ... */
 
-    ifail = colloid_io_ansi_create(&info, &io);
+    ifail = colloid_io_mpio_create(&info, &io);
     assert(ifail == 0);
 
-    ifail = colloid_io_ansi_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_mpio_read(io, "colloid-ansi-ascii.001-001");
     assert(ifail == 0);
     assert(io->info->ntotal == 102); /* Total after read, all ranks */
 
-    colloid_io_ansi_free(&io);
+    colloid_io_mpio_free(&io);
     colloids_info_finalise(&info);
   }
 
   /* Read from existing binary file */
+  /* For the abstract type, one must set the relevant options io mode */
   {
     int               ncell[3] = {3, 3, 3};
     colloid_options_t opts     = colloid_options_ncell(ncell);
     colloids_info_t   info     = {0};
 
-    /* Switch input record format to non-default binary ... */
+    /* Switch input mode and record format to non-default binary ... */
+    opts.input.mode      = COLLOID_IO_MODE_MPIIO;
     opts.input.iorformat = IO_RECORD_BINARY;
     colloids_info_initialise(pe, cs, &opts, &info);
 
@@ -190,11 +253,11 @@ int test_colloid_io_ansi_read(pe_t * pe) {
 
 /*****************************************************************************
  *
- *  test_colloid_io_ansi_write
+ *  test_colloid_io_mpio_write
  *
  *****************************************************************************/
 
-int test_colloid_io_ansi_write(pe_t * pe) {
+int test_colloid_io_mpio_write(pe_t * pe) {
 
   int    ifail = 0;
   cs_t * cs    = NULL;
@@ -207,18 +270,18 @@ int test_colloid_io_ansi_write(pe_t * pe) {
     int                 ncell[3] = {3, 3, 3};
     colloid_options_t   opts     = colloid_options_ncell(ncell);
     colloids_info_t     info     = {0};
-    colloid_io_ansi_t * io       = NULL;
+    colloid_io_mpio_t * io       = NULL;
 
     colloids_info_initialise(pe, cs, &opts, &info);
-    ifail = colloid_io_ansi_create(&info, &io);
+    ifail = colloid_io_mpio_create(&info, &io);
 
-    ifail = colloid_io_ansi_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_mpio_read(io, "colloid-ansi-ascii.001-001");
     assert(ifail == 0);
 
-    ifail = colloid_io_ansi_write(io, "colloids-ansi-write-ascii.dat");
-    assert(ifail == 0);
+    ifail = colloid_io_mpio_write(io, "colloids-mpio-write-ascii.dat");
+    assert(ifail == 0); /* FIXME */
 
-    colloid_io_ansi_free(&io);
+    colloid_io_mpio_free(&io);
     colloids_info_finalise(&info);
   }
 
@@ -233,11 +296,11 @@ int test_colloid_io_ansi_write(pe_t * pe) {
 
     /* Input, to generate some data ... */
     {
-      colloid_io_ansi_t * input = NULL;
+      colloid_io_mpio_t * input = NULL;
 
-      ifail = colloid_io_ansi_create(&info, &input);
-      ifail = colloid_io_ansi_read(input, "colloid-ansi-ascii.001-001");
-      colloid_io_ansi_free(&input);
+      ifail = colloid_io_mpio_create(&info, &input);
+      ifail = colloid_io_mpio_read(input, "colloid-ansi-ascii.001-001");
+      colloid_io_mpio_free(&input);
       assert(ifail == 0);
     }
 
