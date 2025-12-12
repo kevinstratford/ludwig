@@ -27,8 +27,7 @@
 static colloid_io_impl_vt_t vt_ = {
     (colloid_io_impl_free_ft)  colloid_io_ansi_free,
     (colloid_io_impl_read_ft)  colloid_io_ansi_read,
-    (colloid_io_impl_write_ft) colloid_io_ansi_write
-};
+    (colloid_io_impl_write_ft) colloid_io_ansi_write};
 
 static int colloid_io_ansi_check_read(colloid_io_ansi_t * io, int ngroup);
 
@@ -45,7 +44,7 @@ int colloid_io_ansi_read_binary(colloid_io_ansi_t * io, FILE * fp);
  *****************************************************************************/
 
 int colloid_io_ansi_create(const colloids_info_t * info,
-                           colloid_io_ansi_t ** io) {
+                           colloid_io_ansi_t **    io) {
 
   int                 ifail   = 0;
   colloid_io_ansi_t * io_inst = NULL;
@@ -60,7 +59,7 @@ int colloid_io_ansi_create(const colloids_info_t * info,
 
   return 0;
 
- err:
+err:
   free(io_inst);
 
   return -1;
@@ -92,7 +91,7 @@ void colloid_io_ansi_free(colloid_io_ansi_t ** io) {
  *****************************************************************************/
 
 int colloid_io_ansi_initialise(const colloids_info_t * info,
-                               colloid_io_ansi_t * io) {
+                               colloid_io_ansi_t *     io) {
   assert(info);
   assert(io);
 
@@ -117,7 +116,7 @@ int colloid_io_ansi_initialise(const colloids_info_t * info,
 
   return 0;
 
- err:
+err:
   *io = (colloid_io_ansi_t) {0};
 
   return -1;
@@ -218,15 +217,15 @@ int colloid_io_ansi_write(colloid_io_ansi_t * io, const char * filename) {
     ntotal = 0;
     for (int n = 0; n < nranks; n++) {
       ntotal    += nclist[n];
-      displ[n]  *= sizeof(colloid_state_t); /* to bytes */
-      nclist[n] *= sizeof(colloid_state_t); /* ditto */
+      displ[n]  *= sizeof(colloid_state_t);  /* to bytes */
+      nclist[n] *= sizeof(colloid_state_t);  /* ditto */
     }
 
     ifail = colloid_array_alloc(0, ntotal, &rbuf);
     if (ifail != 0) goto err;
   }
 
-  MPI_Gatherv(cbuf.data, nlocal*sizeof(colloid_state_t), MPI_BYTE, rbuf.data,
+  MPI_Gatherv(cbuf.data, nlocal * sizeof(colloid_state_t), MPI_BYTE, rbuf.data,
               nclist, displ, MPI_BYTE, 0, io->comm);
 
   if (myrank == 0) {
@@ -245,7 +244,7 @@ int colloid_io_ansi_write(colloid_io_ansi_t * io, const char * filename) {
     fclose(fp);
   }
 
- err:
+err:
 
   colloid_array_free(&rbuf);
   colloid_array_free(&cbuf);
@@ -305,7 +304,7 @@ int colloid_io_ansi_write_binary(FILE * fp, const colloid_array_t * buf) {
 
   return 0;
 
- err:
+err:
   return errno;
 }
 
@@ -365,7 +364,7 @@ int colloid_io_ansi_read(colloid_io_ansi_t * io, const char * filename) {
     }
   }
 
- err:
+err:
   return ifail;
 }
 
@@ -384,20 +383,19 @@ int colloid_io_ansi_read_ascii(colloid_io_ansi_t * io, FILE * fp) {
   assert(fp);
 
   int nr = fscanf(fp, "%22d\n", &nread);
-  if (nr != 1) {
-    goto err;
-  }
+  if (nr != 1) goto err;
 
   for (int n = 0; n < nread; n++) {
     colloid_state_t s     = {0};
     colloid_t *     pc    = NULL;
     int             ifail = colloid_state_read_ascii(&s, fp);
     if (ifail != 0) goto err;
+
     colloids_info_add_local(io->info, s.index, s.r, &pc);
     if (pc) pc->s = s;
   }
 
- err:
+err:
 
   ifail = colloid_io_ansi_check_read(io, nread);
 
@@ -435,7 +433,7 @@ int colloid_io_ansi_read_binary(colloid_io_ansi_t * io, FILE * fp) {
 
   /* Collective, so cannot be by-passed. Fall through... */
 
- err:
+err:
 
   /* FIXME: This produces a message to stdout. Avoid the message? */
   ifail = colloid_io_ansi_check_read(io, nread);

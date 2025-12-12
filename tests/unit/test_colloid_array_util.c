@@ -110,7 +110,7 @@ int test_colloid_array_free(void) {
     colloid_array_free(&buf);
     assert(buf.managed == 0);
     assert(buf.ntotal  == 0);
-    assert(buf.data    == NULL);
+    assert(buf.data == NULL);
   }
 
   /* Managed */
@@ -126,7 +126,7 @@ int test_colloid_array_free(void) {
     colloid_array_free(&buf);
     assert(buf.managed == 0);
     assert(buf.ntotal  == 0);
-    assert(buf.data    == NULL);
+    assert(buf.data == NULL);
   }
 
   return ifail;
@@ -145,8 +145,8 @@ int test_colloid_array_alloc_host(void) {
 
   /* Check zero-sized alloc fails elegantly ... */
   {
-    int ntotal = 0;
-    colloid_array_t buf = {0};
+    int             ntotal = 0;
+    colloid_array_t buf    = {0};
 
     ifail = colloid_array_alloc(managed, ntotal, &buf);
     assert(ifail != 0);
@@ -154,15 +154,15 @@ int test_colloid_array_alloc_host(void) {
 
   /* Allocation should give us the right to access relevant elements */
   {
-    int ntotal = 19;
-    colloid_array_t buf = {0};
+    int             ntotal = 19;
+    colloid_array_t buf    = {0};
 
     ifail = colloid_array_alloc(managed, ntotal, &buf);
     assert(ifail == 0);
 
     assert(buf.managed == managed);
-    assert(buf.ntotal  == ntotal);
-    assert(buf.data    != NULL);
+    assert(buf.ntotal == ntotal);
+    assert(buf.data != NULL);
 
     for (int i = 0; i < buf.ntotal; i++) {
       buf.data[i] = (colloid_state_t) {0};
@@ -190,6 +190,11 @@ __global__ void kernel1(int ntotal, colloid_array_t buf) {
   assert(buf.ntotal  == ntotal);
   assert(buf.data    != NULL);
 
+  if (i >= ntotal) {
+    printf("fail for all threads: blockIdx.x %d\n", i);
+    assert(0);
+  }
+
   if (buf.data[i].index != 1 + i) {
     printf("fail at %d\n", i);
     assert(0);
@@ -207,6 +212,11 @@ __global__ void kernel2(int ntotal, colloid_array_t buf) {
   assert(buf.managed == 1);
   assert(buf.ntotal  == ntotal);
   assert(buf.data    != NULL);
+
+  if (i >= ntotal) {
+    printf("fail for all threads: blockIdx.x %d\n", i);
+    assert(0);
+  }
 
   if (threadIdx.x == 0) {
     buf.data[i].index = 1 + i;
@@ -230,14 +240,14 @@ int test_colloid_array_alloc_managed(void) {
 
   /* Host assignment */
   {
-    int ntotal = 32;
-    colloid_array_t buf = {0};
+    int             ntotal = 32;
+    colloid_array_t buf    = {0};
 
     ifail = colloid_array_alloc(managed, ntotal, &buf);
     assert(ifail == 0);
     assert(buf.managed == managed);
-    assert(buf.ntotal  == ntotal);
-    assert(buf.data    != NULL);
+    assert(buf.ntotal == ntotal);
+    assert(buf.data != NULL);
 
     /* We have the right to access these elements ... */
     for (int i = 0; i < buf.ntotal; i++) {
@@ -260,8 +270,8 @@ int test_colloid_array_alloc_managed(void) {
 
   /* Kernel assignment */
   {
-    int ntotal = 129;
-    colloid_array_t buf = {0};
+    int             ntotal = 129;
+    colloid_array_t buf    = {0};
 
     ifail = colloid_array_alloc(managed, ntotal, &buf);
     assert(ifail == 0);
@@ -285,7 +295,7 @@ int test_colloid_array_alloc_managed(void) {
     colloid_array_free(&buf);
   }
 
-  return 0;
+  return ifail;
 }
 
 /*****************************************************************************
@@ -300,14 +310,14 @@ int test_colloid_array_realloc_host(void) {
 
   /* realloc with an empty object */
   {
-    int newtotal = 20;
-    colloid_array_t buf = {0};
+    int             newtotal = 20;
+    colloid_array_t buf      = {0};
 
     ifail = colloid_array_realloc(newtotal, &buf);
     assert(ifail == 0);
 
     assert(buf.managed == 0);
-    assert(buf.ntotal  == newtotal);
+    assert(buf.ntotal == newtotal);
     assert(buf.data);
 
     /* Check elements can be accessed */
@@ -336,7 +346,7 @@ int test_colloid_array_realloc_host(void) {
     ifail = colloid_array_realloc(newtotal, &buf);
     assert(ifail == 0);
     assert(buf.managed == managed);
-    assert(buf.ntotal  == newtotal);
+    assert(buf.ntotal == newtotal);
     assert(buf.data);
 
     /* Check existing data, and assess the new data. */
@@ -389,7 +399,7 @@ int test_colloid_array_realloc_managed(void) {
     assert(ifail == 0);
 
     assert(buf.managed == 1);
-    assert(buf.ntotal  == newtotal);
+    assert(buf.ntotal == newtotal);
     assert(buf.data);
 
     /* set additional values ... */

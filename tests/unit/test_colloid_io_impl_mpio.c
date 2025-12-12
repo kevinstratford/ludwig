@@ -2,6 +2,16 @@
  *
  *  test_colloid_io_impl_mpio.c
  *
+ *  See also test_colloid_io_impl_ansi.c for comments on file assets.
+ *
+ *
+ *  Edinburgh Soft Matter and Statisical Physics Group and
+ *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2025 The University of Edinburgh
+ *
+ *  Kevin Stratford (kevin@epcc.ed.ac.uk)
+ *
  *****************************************************************************/
 
 #include <assert.h>
@@ -30,7 +40,8 @@ int test_colloid_io_impl_mpio_suite(void) {
   pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
 
   /* If struct changes, the tests need updating... */
-  assert(sizeof(colloid_io_mpio_t) == 80);
+  /* See commenmt in ansi test ... */
+  /* assert(sizeof(colloid_io_mpio_t) == 80);*/
 
   test_colloid_io_mpio_initialise(pe);
   test_colloid_io_mpio_finalise(pe);
@@ -93,12 +104,12 @@ int test_colloid_io_mpio_initialise(pe_t * pe) {
 
 int test_colloid_io_mpio_finalise(pe_t * pe) {
 
-  int    ifail = 0;
+  int    ifail    = 0;
   int    ncell[3] = {8, 8, 8};
-  cs_t * cs    = NULL;
+  cs_t * cs       = NULL;
 
-  colloids_info_t * info     = NULL;
-  colloid_io_mpio_t io       = {0};
+  colloids_info_t * info = NULL;
+  colloid_io_mpio_t io   = {0};
 
   cs_create(pe, &cs);
   cs_init(cs);
@@ -156,12 +167,12 @@ int test_colloid_io_mpio_create(pe_t * pe) {
 
 int test_colloid_io_mpio_free(pe_t * pe) {
 
-  int    ifail = 0;
+  int    ifail    = 0;
   int    ncell[3] = {8, 8, 8};
-  cs_t * cs    = NULL;
+  cs_t * cs       = NULL;
 
-  colloids_info_t *   info     = NULL;
-  colloid_io_mpio_t * io       = NULL;
+  colloids_info_t *   info = NULL;
+  colloid_io_mpio_t * io   = NULL;
 
   cs_create(pe, &cs);
   cs_init(cs);
@@ -171,7 +182,7 @@ int test_colloid_io_mpio_free(pe_t * pe) {
   ifail = colloid_io_mpio_create(info, &io);
   colloid_io_mpio_free(&io);
   assert(ifail == 0);
-  assert(io    == NULL);
+  assert(io == NULL);
 
   colloids_info_free(info);
   cs_free(cs);
@@ -265,7 +276,7 @@ int test_colloid_io_mpio_write(pe_t * pe) {
   cs_create(pe, &cs);
   cs_init(cs);
 
-  /* ASCII; read the exiting file to generate data. */
+  /* ASCII; read the existing file to generate data. */
   {
     int                 ncell[3] = {3, 3, 3};
     colloid_options_t   opts     = colloid_options_ncell(ncell);
@@ -278,8 +289,8 @@ int test_colloid_io_mpio_write(pe_t * pe) {
     ifail = colloid_io_mpio_read(io, "colloid-ansi-ascii.001-001");
     assert(ifail == 0);
 
-    ifail = colloid_io_mpio_write(io, "colloids-mpio-write-ascii.dat");
-    assert(ifail == 0); /* FIXME */
+    ifail = colloid_io_mpio_write(io, "colloid-mpio-write-ascii.dat");
+    assert(ifail == 0);
 
     colloid_io_mpio_free(&io);
     colloids_info_finalise(&info);
@@ -305,13 +316,18 @@ int test_colloid_io_mpio_write(pe_t * pe) {
     }
 
     /* Now output, via the abstract type ... */
+    /* Need to set non-default output options ... */
+
+    info.options.output.mode      = COLLOID_IO_MODE_MPIIO;
+    info.options.output.iorformat = IO_RECORD_BINARY;
+
     {
       colloid_io_impl_t * output = NULL;
 
       ifail = colloid_io_impl_output(&info, &output);
       assert(ifail == 0);
 
-      ifail = output->impl->write(output, "tmp.dat");
+      ifail = output->impl->write(output, "colloid-mpio-write-binary.dat");
       assert(ifail == 0);
       output->impl->free(&output);
     }

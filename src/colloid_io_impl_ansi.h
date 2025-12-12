@@ -20,19 +20,18 @@
 typedef struct colloid_io_ansi_s colloid_io_ansi_t;
 
 struct colloid_io_ansi_s {
-  colloid_io_impl_t super;          /* superclass block */
-
-  colloids_info_t * info;           /* colloid info, incl. i/o options */
-  io_subfile_t      subfile;        /* file decomposition */
-  MPI_Comm          comm;           /* Cartesian communicator handle */
+  colloid_io_impl_t super;   /* superclass block */
+  colloids_info_t * info;    /* colloid info, incl. i/o options */
+  io_subfile_t      subfile; /* file decomposition */
+  MPI_Comm          comm;    /* Cartesian communicator handle */
 };
 
 int colloid_io_ansi_create(const colloids_info_t * info,
-			   colloid_io_ansi_t ** io);
+                           colloid_io_ansi_t ** io);
 void colloid_io_ansi_free(colloid_io_ansi_t ** io);
 
 int colloid_io_ansi_initialise(const colloids_info_t * info,
-			       colloid_io_ansi_t * io);
+                               colloid_io_ansi_t * io);
 int colloid_io_ansi_finalise(colloid_io_ansi_t * io);
 
 int colloid_io_ansi_read(colloid_io_ansi_t * io, const char * filename);

@@ -18,19 +18,18 @@
 typedef struct colloid_io_mpio_s colloid_io_mpio_t;
 
 struct colloid_io_mpio_s {
-  colloid_io_impl_t super;          /* superclass block */
-
-  colloids_info_t * info;           /* colloid info, incl. i/o options */
-  io_subfile_t      subfile;        /* file decomposition */
-  MPI_Comm          comm;           /* Cartesian communicator handle */
+  colloid_io_impl_t super;   /* superclass block */
+  colloids_info_t * info;    /* colloid info, incl. i/o options */
+  io_subfile_t      subfile; /* file decomposition */
+  MPI_Comm          comm;    /* Cartesian communicator handle */
 };
 
 int colloid_io_mpio_create(const colloids_info_t * info,
-			   colloid_io_mpio_t ** io);
+                           colloid_io_mpio_t **    io);
 void colloid_io_mpio_free(colloid_io_mpio_t ** io);
 
 int colloid_io_mpio_initialise(const colloids_info_t * info,
-			       colloid_io_mpio_t * io);
+                               colloid_io_mpio_t *     io);
 int colloid_io_mpio_finalise(colloid_io_mpio_t * io);
 
 int colloid_io_mpio_read(colloid_io_mpio_t * io, const char * filename);

@@ -17,7 +17,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2021-2024 The University of Edinburgh
+ *  (c) 2021-2025 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -2149,6 +2149,8 @@ int MPI_File_close(MPI_File * fh) {
     FILE * fp = mpi_file_handle_release(mpi_info_, *fh);
     fclose(fp);
   }
+
+  /* FIXME. Could check for MODE_DELETE_ON_CLOSE and action */
 
   *fh = MPI_FILE_NULL;
 

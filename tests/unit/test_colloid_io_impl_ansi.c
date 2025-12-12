@@ -2,6 +2,17 @@
  *
  *  test_colloid_io_impl_ansi.c
  *
+ *  File assets for this test:
+ *    colloid-ansi-ascii.001-001     via util/colloid_init -v 0.02 ...
+ *    colloid-ansi-binary.001-001    ... for size {64, 64, 64}.
+ *
+ *  Edinburgh Soft Matter and Statistical Physics Group and
+ *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2025 The University of Edinburgh
+ *
+ *  Kevin Stratford (kevin@epcc,ed.ac.uk)
+ *
  *****************************************************************************/
 
 #include <assert.h>
@@ -30,8 +41,8 @@ int test_colloid_io_impl_ansi_suite(void) {
 
   pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
 
-  /* If struct changes, the tests need updating... */
-  assert(sizeof(colloid_io_ansi_t) == 80);
+  /* The implementation/alignment of MPI_Comm makes the size 80 or 88 ... */
+  /* ... so won't test for sizeof() */
 
   test_colloid_io_ansi_initialise(pe);
   test_colloid_io_ansi_create(pe);
@@ -248,7 +259,7 @@ int test_colloid_io_ansi_write(pe_t * pe) {
       ifail = colloid_io_impl_output(&info, &output);
       assert(ifail == 0);
 
-      ifail = output->impl->write(output, "tmp.dat");
+      ifail = output->impl->write(output, "colloid-ansi-write-binary.dat");
       assert(ifail == 0);
       output->impl->free(&output);
     }
