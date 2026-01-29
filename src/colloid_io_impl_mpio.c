@@ -12,7 +12,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinvburgh
+ *  (c) 2025-2026 The University of Edinvburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -244,7 +244,7 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
 
   int                 nlocal = 0;
   int                 ntotal = 0;
-  int                 nbufsz = -1;
+  size_t              nbufsz = -1;
   int *               idisp  = NULL;
   char *              buf    = NULL;
   colloid_t *         pc     = NULL;
@@ -268,7 +268,7 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
   if (asc) nbufsz = LUDWIG_COLLOID_IO_BUFSZ;
   if (bin) nbufsz = sizeof(colloid_state_t);
 
-  buf = (char *) calloc((1 + nlocal)*nbufsz, sizeof(char));
+  buf = (char *) calloc(nbufsz*(1 + nlocal), sizeof(char));
   sp  = (sort_by_pointer_t *) calloc(1 + nlocal, sizeof(sort_by_pointer_t));
 
   if (buf == NULL || sp == NULL) goto err;
@@ -294,8 +294,8 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
   if (idisp == NULL) goto err;
 
   for (int ib = 0; ib < nlocal; ib++) {
-    colloid_t * pc = sp[ib].pc;
-    idisp[ib]      = sp[ib].pc->s.index - 1;
+    pc        = sp[ib].pc;
+    idisp[ib] = sp[ib].pc->s.index - 1;
 
     if (asc) ifail = colloid_state_io_write_buf_ascii(&pc->s, buf + ib*nbufsz);
     if (bin) ifail = colloid_state_io_write_buf(&pc->s, buf + ib*nbufsz);
