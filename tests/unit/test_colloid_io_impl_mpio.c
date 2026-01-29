@@ -45,9 +45,8 @@ int test_colloid_io_impl_mpio_suite(void) {
 
   pe_create(MPI_COMM_WORLD, PE_QUIET, &pe);
 
-  /* If struct changes, the tests need updating... */
-  /* See commenmt in ansi test ... */
-  /* assert(sizeof(colloid_io_mpio_t) == 80);*/
+  /* The implementation/alignment of MPI_Comm makes the size 80 or 88 ... */
+  /* ... so won't test for sizeof() */
 
   test_colloid_io_mpio_initialise(pe);
   test_colloid_io_mpio_finalise(pe);
