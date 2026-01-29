@@ -57,8 +57,6 @@ __host__ int tests_create(int argc, char ** argv) {
   test_cs_limits_suite();
   test_le_suite();
 
-  test_colloid_options_suite();
-  /* test_colloid_io_impl_ansi_suite(); FIXME */
 
   /* i/o infrastructure */
   test_io_aggregator_suite();
@@ -84,12 +82,21 @@ __host__ int tests_create(int argc, char ** argv) {
   test_bp_suite();
   test_build_suite();
   test_ch_suite();
+
+  test_colloid_options_suite();
+  test_colloid_io_options_suite();
   test_colloid_suite();
   test_colloid_link_suite();
   test_colloid_state_io_suite();
+
+  test_colloid_io_impl_ansi_suite();
+  test_colloid_io_impl_mpio_suite();
+  test_colloids_file_io_suite();
+
   test_colloid_sums_suite();
   test_colloids_info_suite();
   test_colloids_halo_suite();
+
   test_ewald_suite();
   test_fe_null_suite();
   test_fe_electro_suite();

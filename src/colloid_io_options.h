@@ -5,7 +5,7 @@
  *  Edinburgh Soft Matter and Statisticsal Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -14,6 +14,7 @@
 #ifndef LUDWIG_COLLOID_IO_OPTIONS_H
 #define LUDWIG_COLLOID_IO_OPTIONS_H
 
+#include "runtime.h"
 #include "io_options.h"
 
 typedef enum colloid_io_mode_enum {
@@ -46,5 +47,10 @@ int colloid_io_options_to_json(const colloid_io_options_t * opts,
                                cJSON ** json);
 int colloid_io_options_from_json(const cJSON * json,
                                  colloid_io_options_t * opts);
+
+int colloid_io_options_to_vinfo(rt_t * rt, rt_enum_t level,
+				const colloid_io_options_t * options);
+int colloid_io_options_from_rt(rt_t * rt, rt_enum_t level,
+			       colloid_io_options_t * options);
 
 #endif

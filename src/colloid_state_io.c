@@ -2,16 +2,22 @@
  *
  *  colloid_state_io.c
  *
- *  Basic colloid state i/o functions of ascii/binary.
+ *  Basic colloid state i/o functions of ascii/binary. The i/o is to
+ *  character buffer.
+ *
+ *
+ *  Edinburgh Soft Matter and Statistical Physics Group and
+ *  Edinburgh Parallel Computing Centre
+ *
+ *  (c) 2025-2026 The University of Edinburgh
+ *
+ *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
  *****************************************************************************/
 
 #include <string.h>
 
 #include "colloid_state_io.h"
-
-/* Override COLLOID_IO_VERSION here: */
-#define IO_VERSION 240
 
 /*****************************************************************************
  *
@@ -82,7 +88,7 @@ int colloid_state_io_write_buf_ascii(const colloid_state_t * s, char * buf) {
     nwrite += snprintf(cbuf + 17*item, 1 + item, i1format, s->isfixedvxyz[2]);
     nwrite += snprintf(cbuf + 18*item, 1 + item, i1format, s->inter_type);
     /* This is the i/o version; we ignore s->ioversion: */
-    nwrite += snprintf(cbuf + 19*item, 1 + item, i1format, IO_VERSION);
+    nwrite += snprintf(cbuf + 19*item, 1 + item, i1format, LUDWIG_COLLOID_IO_VERSION);
     nwrite += snprintf(cbuf + 20*item, 1 + item, i1format, s->bc);
     nwrite += snprintf(cbuf + 21*item, 1 + item, i1format, s->shape);
     nwrite += snprintf(cbuf + 22*item, 1 + item, i1format, s->active);

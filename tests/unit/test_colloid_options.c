@@ -6,7 +6,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -28,6 +28,8 @@ int test_colloid_options_valid(void);
 int test_colloid_options_to_json(void);
 int test_colloid_options_from_json(void);
 
+int test_colloid_options_to_vinfo(pe_t * pe);
+
 /*****************************************************************************
  *
  *  test_colloid_options_suite
@@ -48,6 +50,8 @@ int test_colloid_options_suite(void) {
 
   test_colloid_options_to_json();
   test_colloid_options_from_json();
+
+  test_colloid_options_to_vinfo(pe);
 
   pe_info(pe, "%-9s %s\n", "PASS", __FILE__);
   pe_free(pe);
@@ -71,7 +75,12 @@ int test_colloid_options_default(void) {
   assert(options.ncell[2] == 2);
   assert(options.nvel     == 19);
 
-  if (fabs(options.rho0 - 1.0) > DBL_EPSILON) ifail = -1;
+  assert(options.bbl_build_freq == 1);
+
+  if (fabs(options.rho0  - 1.0) > DBL_EPSILON) ifail = -1;
+  assert(ifail == 0);
+
+  if (fabs(options.drmax - 0.8) > DBL_EPSILON) ifail = -2;
   assert(ifail == 0);
 
   assert(colloid_io_options_valid(&options.input));
@@ -81,8 +90,7 @@ int test_colloid_options_default(void) {
   assert(options.have_colloids == 0);
 
   /* If the size changes, the tests must change */
-  printf("colloid_options_t sieof(): %ld\n", sizeof(colloid_options_t));
-  assert(sizeof(colloid_options_t) == 80);
+  assert(sizeof(colloid_options_t) == 96);
 
   return ifail;
 }
@@ -103,8 +111,8 @@ int test_colloid_options_have_colloids(void) {
     colloid_options_t opts = colloid_options_have_colloids(have_colloids);
 
     assert(opts.have_colloids == have_colloids);
-    assert(opts.nvel          == 19);
-    assert(opts.nfreq         == 0);
+    assert(opts.nvel  == 19);
+    assert(opts.nfreq == 0);
     if (opts.nfreq != 0) ifail = -1;
   }
 
@@ -114,8 +122,8 @@ int test_colloid_options_have_colloids(void) {
     colloid_options_t opts = colloid_options_have_colloids(have_colloids);
 
     assert(opts.have_colloids == have_colloids);
-    assert(opts.nvel          == 19);
-    assert(opts.nfreq         == 0);
+    assert(opts.nvel  == 19);
+    assert(opts.nfreq == 0);
     if (opts.nfreq != 0) ifail = -1;
   }
 
@@ -137,6 +145,7 @@ int test_colloid_options_ncell(void) {
     colloid_options_t opts     = colloid_options_ncell(ncell);
 
     assert(opts.have_colloids != 0);
+
     assert(opts.ncell[0] == ncell[0]);
     assert(opts.ncell[1] == ncell[1]);
     assert(opts.ncell[2] == ncell[2]);
@@ -225,13 +234,15 @@ int test_colloid_options_to_json(void) {
     assert(ifail == 0);
 
     if (json) {
-      cJSON * jhave = cJSON_GetObjectItemCaseSensitive(json, "have_colloids");
-      cJSON * jnvel = cJSON_GetObjectItemCaseSensitive(json, "nvel");
-      cJSON * jrho0 = cJSON_GetObjectItemCaseSensitive(json, "rho0");
+      cJSON * jhave  = cJSON_GetObjectItemCaseSensitive(json, "have_colloids");
+      cJSON * jnvel  = cJSON_GetObjectItemCaseSensitive(json, "nvel");
+      cJSON * jrho0  = cJSON_GetObjectItemCaseSensitive(json, "rho0");
+      cJSON * jdrmax = cJSON_GetObjectItemCaseSensitive(json, "drmax");
 
       assert(cJSON_IsBool(jhave));
       assert(cJSON_IsNumber(jnvel));
       assert(cJSON_IsNumber(jrho0));
+      assert(cJSON_IsNumber(jdrmax));
 
       if (jhave) {
         /* Default option is no colloids */
@@ -248,6 +259,12 @@ int test_colloid_options_to_json(void) {
       if (jrho0) {
         double rho0 = cJSON_GetNumberValue(jrho0);
         if (fabs(rho0 - opts.rho0) > DBL_EPSILON) ifail = -1;
+        assert(ifail == 0);
+      }
+
+      if (jdrmax) {
+        double drmax = cJSON_GetNumberValue(jdrmax);
+        if (fabs(drmax - opts.drmax) > DBL_EPSILON) ifail = -2;
         assert(ifail == 0);
       }
 
@@ -273,7 +290,9 @@ int test_colloid_options_from_json(void) {
     const char * str = "{\"have_colloids\": true, "
                        "\"ncell\": [3, 4, 5], "
                        "\"nvel\": 27, "
+                       "\"bbl_build_freq\": 10, "
                        "\"rho0\": 2.00, "
+                       "\"drmax\": 1.00, "
                        "\"Input options\": { "
                        "\"I/O mode\": \"ansi\", "
                        "\"Format\":   \"binary\", "
@@ -286,7 +305,7 @@ int test_colloid_options_from_json(void) {
                        "\"I/O grid\": [0, 1, 2] }, "
                        "\"nfreq\": 1000 }";
 
-    cJSON *      json = cJSON_Parse(str);
+    cJSON * json = cJSON_Parse(str);
     assert(json);
 
     if (json) {
@@ -297,18 +316,23 @@ int test_colloid_options_from_json(void) {
       assert(opts.ncell[1] == 4);
       assert(opts.ncell[2] == 5);
       assert(opts.nvel     == 27);
-      assert(fabs(opts.rho0 - 2.0) < DBL_EPSILON);
+
+      assert(opts.bbl_build_freq == 10);
+
+      assert(fabs(opts.rho0 - 2.0)  < DBL_EPSILON);
+      assert(fabs(opts.drmax - 1.0) < DBL_EPSILON);
+
       /* Input */
-      assert(opts.input.mode == COLLOID_IO_MODE_ANSI);
+      assert(opts.input.mode      == COLLOID_IO_MODE_ANSI);
       assert(opts.input.iorformat == IO_RECORD_BINARY);
-      assert(opts.input.report == 0);
+      assert(opts.input.report    == 0);
       assert(opts.input.iogrid[0] == 6);
       assert(opts.input.iogrid[1] == 7);
       assert(opts.input.iogrid[2] == 8);
       /* Output */
-      assert(opts.output.mode == COLLOID_IO_MODE_MPIIO);
+      assert(opts.output.mode      == COLLOID_IO_MODE_MPIIO);
       assert(opts.output.iorformat == IO_RECORD_ASCII);
-      assert(opts.output.report != 0);
+      assert(opts.output.report    != 0);
       assert(opts.output.iogrid[0] == 0);
       assert(opts.output.iogrid[1] == 1);
       assert(opts.output.iogrid[2] == 2);
@@ -318,6 +342,29 @@ int test_colloid_options_from_json(void) {
 
     cJSON_Delete(json);
   }
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  test_colloid_options_to_vinfo
+ *
+ *****************************************************************************/
+
+int test_colloid_options_to_vinfo(pe_t * pe) {
+
+  int ifail = 0;
+  rt_t * rt = NULL;
+
+  colloid_options_t opts = colloid_options_default();
+
+  rt_create(pe, &rt);
+
+  ifail = colloid_options_to_vinfo(rt, RT_NONE, &opts);
+  assert(ifail == 0);
+
+  rt_free(rt);
 
   return ifail;
 }

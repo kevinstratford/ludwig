@@ -9,7 +9,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -23,6 +23,7 @@
 #include "util.h"
 
 static const double RHO_ZERO_DEFAULT      = 1.0; /* unit density lb units */
+static const double DRMAX_DEFAULT         = 0.8; /* displacement max. */
 static const int    HAVE_COLLOIDS_DEFAULT = 0;   /* no colloids */
 
 /*****************************************************************************
@@ -36,14 +37,16 @@ colloid_options_t colloid_options_default(void) {
   /* Default is no colloids, but other values are required. */
 
   colloid_options_t options = {
-      .ncell  = {2, 2, 2},                   /* min. local list dimensions */
-      .nvel   = 19,                          /* default bbl model */
-      .rho0   = RHO_ZERO_DEFAULT,
-      .input  = colloid_io_options_default(),
-      .output = colloid_io_options_default(),
-      .nfreq  = 0,                           /* No output */
+      .ncell          = {2, 2, 2},         /* min. local list dimensions */
+      .nvel           = 19,                /* default bbl model */
+      .bbl_build_freq = 1,                 /* rebuild every step */
+      .rho0           = RHO_ZERO_DEFAULT,
+      .drmax          = DRMAX_DEFAULT,
+      .input          = colloid_io_options_default(),
+      .output         = colloid_io_options_default(),
+      .nfreq          = 0,                            /* No output */
 
-      .have_colloids = HAVE_COLLOIDS_DEFAULT /* colloids expected or not */
+      .have_colloids  = HAVE_COLLOIDS_DEFAULT         /* colloids or none */
   };
 
   return options;
@@ -111,7 +114,9 @@ int colloid_options_valid(const colloid_options_t * options) {
   assert(options);
 
   if (0 == colloid_options_ncell_valid(options->ncell)) isvalid = 0;
+  if (options->bbl_build_freq < 1)                      isvalid = 0;
   if (options->rho0 <= 0.0)                             isvalid = 0;
+  if (options->drmax <= 0.0)                            isvalid = 0;
   if (0 == colloid_io_options_valid(&options->input))   isvalid = 0;
   if (0 == colloid_io_options_valid(&options->output))  isvalid = 0;
   if (options->nfreq < 0)                               isvalid = 0;
@@ -140,7 +145,9 @@ int colloid_options_to_json(const colloid_options_t * opts, cJSON ** json) {
     cJSON_AddBoolToObject(myjson, "have_colloids", opts->have_colloids);
     cJSON_AddItemToObject(myjson, "ncell", ncell);
     cJSON_AddNumberToObject(myjson, "nvel", opts->nvel);
+    cJSON_AddNumberToObject(myjson, "bbl_build_freq", opts->bbl_build_freq);
     cJSON_AddNumberToObject(myjson, "rho0", opts->rho0);
+    cJSON_AddNumberToObject(myjson, "drmax", opts->drmax);
 
     {
       cJSON * input  = NULL;
@@ -167,7 +174,7 @@ int colloid_options_to_json(const colloid_options_t * opts, cJSON ** json) {
  *
  *  colloid_options_from_json
  *
- *  FIXME: decide what is mandatory, and what is optional.
+ *  All components mandatory at the moment.
  *
  *****************************************************************************/
 
@@ -183,25 +190,76 @@ int colloid_options_from_json(const cJSON * json, colloid_options_t * opts) {
     cJSON * have   = cJSON_GetObjectItemCaseSensitive(json, "have_colloids");
     cJSON * ncell  = cJSON_GetObjectItemCaseSensitive(json, "ncell");
     cJSON * nvel   = cJSON_GetObjectItemCaseSensitive(json, "nvel");
+    cJSON * bbl    = cJSON_GetObjectItemCaseSensitive(json, "bbl_build_freq");
     cJSON * rho0   = cJSON_GetObjectItemCaseSensitive(json, "rho0");
+    cJSON * drmax  = cJSON_GetObjectItemCaseSensitive(json, "drmax");
     cJSON * input  = cJSON_GetObjectItemCaseSensitive(json, "Input options");
     cJSON * output = cJSON_GetObjectItemCaseSensitive(json, "Output options");
     cJSON * nfreq  = cJSON_GetObjectItemCaseSensitive(json, "nfreq");
 
     if (0 == cJSON_IsBool(have))                                  ifail +=  1;
     if (3 != util_json_to_int_array(ncell, opts->ncell, 3))       ifail +=  2;
-    if (0 == cJSON_IsNumber(nvel))                                ifail +=  4;
-    if (0 == cJSON_IsNumber(rho0))                                ifail +=  8;
+    if (0 == cJSON_IsNumber(bbl))                                 ifail +=  4;
+    if (0 == cJSON_IsNumber(nvel))                                ifail +=  8;
+    if (0 == cJSON_IsNumber(rho0))                                ifail += 16;
+    if (0 == cJSON_IsNumber(drmax))                               ifail += 32;
 
     if (have) opts->have_colloids = cJSON_IsTrue(have);
     if (nvel) opts->nvel = cJSON_GetNumberValue(nvel);
+    if (bbl)  opts->bbl_build_freq = cJSON_GetNumberValue(bbl);
     if (rho0) opts->rho0 = cJSON_GetNumberValue(rho0);
+    if (drmax) opts->drmax = cJSON_GetNumberValue(drmax);
 
-    if (0 != colloid_io_options_from_json(input, &opts->input))   ifail += 16;
-    if (0 != colloid_io_options_from_json(output, &opts->output)) ifail += 32;
-    if (0 == cJSON_IsNumber(nfreq))                               ifail += 64;
+    if (0 != colloid_io_options_from_json(input, &opts->input))   ifail +=  64;
+    if (0 != colloid_io_options_from_json(output, &opts->output)) ifail += 128;
+    if (0 == cJSON_IsNumber(nfreq))                               ifail += 256;
 
     if (nfreq) opts->nfreq = cJSON_GetNumberValue(nfreq);
+  }
+
+  return ifail;
+}
+
+/*****************************************************************************
+ *
+ *  colloid_options_to_vinfo
+ *
+ *  Produce output suitable for human readers; standard output.
+ *
+ *****************************************************************************/
+
+int colloid_options_to_vinfo(rt_t * rt, rt_enum_t level,
+			     const colloid_options_t * opts) {
+  int ifail = 0;
+
+  if (rt == NULL || opts == NULL) {
+    ifail = -1;
+  }
+  else {
+    /* Options */
+    rt_vinfo(rt, level, "Colloid Options\n");
+    rt_vinfo(rt, level, "---------------\n");
+    rt_vinfo(rt, level, "%-32.32s %d %d %d\n", "Cell list:",
+	     opts->ncell[X], opts->ncell[Y], opts->ncell[Z]);
+    rt_vinfo(rt, level, "%-32.32s %d\n", "LB link set:", opts->nvel);
+    rt_vinfo(rt, level, "%-32.32s %d\n", "BBL rebuild freq:",
+	     opts->bbl_build_freq);
+    rt_vinfo(rt, level, "%-32.32s%14.7e\n", "Solid density rho0:",
+	     opts->rho0);
+    rt_vinfo(rt, level, "%-32.32s%14.7e\n", "Max. displacement per dt:",
+	     opts->drmax);
+    rt_vinfo(rt, level, "\n");
+    /* input */
+    rt_vinfo(rt, level, "Colloid i/o input options\n");
+    rt_vinfo(rt, level, "-------------------------\n");
+    colloid_io_options_to_vinfo(rt, level, &opts->input);
+    /* output */
+    rt_vinfo(rt, level, "Colloid i/o output options\n");
+    rt_vinfo(rt, level, "--------------------------\n");
+    colloid_io_options_to_vinfo(rt, level, &opts->output);
+    rt_vinfo(rt, level, "%-32.32s %d\n", "Colloid output frequency:",
+	     opts->nfreq);
+    rt_vinfo(rt, level, "\n");
   }
 
   return ifail;

@@ -72,10 +72,11 @@ int test_colloid_io_ansi_initialise(pe_t * pe) {
 
   {
     int               ncell[3] = {8, 8, 8};
+    colloid_options_t options  = colloid_options_ncell(ncell);
     colloids_info_t * info     = NULL;
     colloid_io_ansi_t io       = {0};
 
-    colloids_info_create(pe, cs, ncell, &info);
+    colloids_info_create(pe, cs, &options, &info);
     ifail = colloid_io_ansi_initialise(info, &io);
     assert(ifail == 0);
 
@@ -88,7 +89,7 @@ int test_colloid_io_ansi_initialise(pe_t * pe) {
     assert(io.comm != cs->commcart);
 
     colloid_io_ansi_finalise(&io);
-    colloids_info_free(info);
+    colloids_info_free(&info);
     assert(io.comm == MPI_COMM_NULL);
   }
 
@@ -113,16 +114,17 @@ int test_colloid_io_ansi_create(pe_t * pe) {
 
   {
     int                 ncell[3] = {8, 8, 8};
+    colloid_options_t   options  = colloid_options_ncell(ncell);
     colloids_info_t *   info     = NULL;
     colloid_io_ansi_t * io       = NULL;
 
-    colloids_info_create(pe, cs, ncell, &info);
+    colloids_info_create(pe, cs, &options, &info);
     ifail = colloid_io_ansi_create(info, &io);
     assert(ifail == 0);
     assert(io->comm != MPI_COMM_NULL);
 
     colloid_io_ansi_free(&io);
-    colloids_info_free(info);
+    colloids_info_free(&info);
     assert(io == NULL);
   }
 

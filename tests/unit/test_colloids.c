@@ -109,10 +109,8 @@ int test_colloids_info_initialise(pe_t * pe, cs_t * cs) {
     /* sites */
 
     assert(info.nsubgrid     == 0);
-    assert(info.rebuild_freq == 1);
 
     assert(fabs(info.rho0 - 1.0) < DBL_EPSILON);
-    /* drmax */
 
     assert(info.isgravity    == 0);
     assert(info.isbuoyancy   == 0);
@@ -196,6 +194,8 @@ int test_colloids_info_with_ncell(pe_t * pe, cs_t * cs, int ncellref[3]) {
   double ltot[3];
   double lcell[3];
   double lcellref;
+
+  colloid_options_t opts  = colloid_options_ncell(ncellref);
   colloids_info_t * cinfo = NULL;
 
   assert(pe);
@@ -204,7 +204,7 @@ int test_colloids_info_with_ncell(pe_t * pe, cs_t * cs, int ncellref[3]) {
   cs_ltot(cs, ltot);
   cs_cartsz(cs, mpi_cartsz);
 
-  colloids_info_create(pe, cs, ncellref, &cinfo);
+  colloids_info_create(pe, cs, &opts, &cinfo);
   assert(cinfo);
 
   colloids_info_ncell(cinfo, ncell);
@@ -225,7 +225,7 @@ int test_colloids_info_with_ncell(pe_t * pe, cs_t * cs, int ncellref[3]) {
   test_colloids_info_cell_coords(cinfo);
   test_colloids_info_add_local(cinfo);
 
-  colloids_info_free(cinfo);
+  colloids_info_free(&cinfo);
 
   return 0;
 }

@@ -2,13 +2,15 @@
  *
  *  colloid_io_impl_ansi.c
  *
- *  Original "ANSI" implementation for colloid input and output.
+ *  An implementation of the oiriginal "ansi" approach for colloid input
+ *  and output to one file (only). The data order in the resulting single
+ *  file is decomposition dependent and the call serialises at root.
  *
  *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -30,6 +32,7 @@ static colloid_io_impl_vt_t vt_ = {
     (colloid_io_impl_write_ft) colloid_io_ansi_write};
 
 static int colloid_io_ansi_check_read(colloid_io_ansi_t * io, int ngroup);
+static int colloid_io_ansi_errno_to_mpierr(int ierr);
 
 int colloid_io_ansi_write_ascii(FILE * fp, const colloid_array_t * buf);
 int colloid_io_ansi_write_binary(FILE * fp, const colloid_array_t * buf);
@@ -100,7 +103,11 @@ int colloid_io_ansi_initialise(const colloids_info_t * info,
   io->super.impl = &vt_;
   io->info       = (colloids_info_t *) info;
 
-  /* FIXME currently in lieu of options. Input or output?  */
+  /* In principle, we could have multiple files for input and/or output
+   * but here we demand a single file for both input and output. */
+  /* The general case would only be required for backwards compatibility
+   * if the original implementation were removed. */
+
   {
     int iogrid[3] = {1, 1, 1};
     int ifail     = io_subfile_create(io->info->cs, iogrid, &io->subfile);
@@ -193,6 +200,7 @@ int colloid_io_ansi_write(colloid_io_ansi_t * io, const char * filename) {
 
   {
     colloid_t * pc = NULL;
+    colloids_info_list_local_build(io->info);
     colloids_info_local_head(io->info, &pc);
 
     for (int n = 0; pc; pc = pc->nextlocal, n += 1) {
@@ -252,6 +260,8 @@ err:
   free(displ);
   free(nclist);
 
+  ifail = colloid_io_ansi_errno_to_mpierr(ifail);
+
   return ifail;
 }
 
@@ -283,12 +293,15 @@ int colloid_io_ansi_write_ascii(FILE * fp, const colloid_array_t * buf) {
  *
  *  colloid_io_ansi_write_binary
  *
- *  Write nc states to file.
+ *  Write nc states to file. One could try to have some error information
+ *  related to the header/data, but it does not fit easily in the MPI
+ *  error return value.
  *
  *****************************************************************************/
 
 int colloid_io_ansi_write_binary(FILE * fp, const colloid_array_t * buf) {
 
+  int ifail = MPI_SUCCESS;
   size_t nw = 0; /* No. of items written */
 
   assert(fp);
@@ -302,10 +315,12 @@ int colloid_io_ansi_write_binary(FILE * fp, const colloid_array_t * buf) {
   nw = fwrite(buf->data, sizeof(colloid_state_t), buf->ntotal, fp);
   if (nw != (size_t) buf->ntotal) goto err;
 
-  return 0;
+  return ifail;
 
 err:
-  return errno;
+  ifail = errno;
+  ifail = colloid_io_ansi_errno_to_mpierr(ifail);
+  return ifail;
 }
 
 /*****************************************************************************
@@ -365,6 +380,8 @@ int colloid_io_ansi_read(colloid_io_ansi_t * io, const char * filename) {
   }
 
 err:
+  ifail = colloid_io_ansi_errno_to_mpierr(ifail);
+
   return ifail;
 }
 
@@ -406,8 +423,6 @@ err:
  *
  *  colloid_io_ansi_read_binary
  *
- *  (colloid_io_ansi_t * io, const char * filename) better?
- *
  *****************************************************************************/
 
 int colloid_io_ansi_read_binary(colloid_io_ansi_t * io, FILE * fp) {
@@ -435,7 +450,6 @@ int colloid_io_ansi_read_binary(colloid_io_ansi_t * io, FILE * fp) {
 
 err:
 
-  /* FIXME: This produces a message to stdout. Avoid the message? */
   ifail = colloid_io_ansi_check_read(io, nread);
 
   return ifail;
@@ -451,34 +465,60 @@ err:
  *  If we haven't lost any particles, we can set the global total and
  *  proceed.
  *
+ *  Returns MPI_SUCCESS or MPI_ERR_IO if not correct.
+ *
  *****************************************************************************/
 
 static int colloid_io_ansi_check_read(colloid_io_ansi_t * io, int ngroup) {
 
-  int myrank = -1;
+  int ifail = MPI_SUCCESS;
+
   int nlocal = 0;
   int ntotal = 0;
 
   assert(io);
 
-  MPI_Comm_rank(io->comm, &myrank);
-
   colloids_info_nlocal(io->info, &nlocal);
 
-  MPI_Reduce(&nlocal, &ntotal, 1, MPI_INT, MPI_SUM, 0, io->comm);
+  MPI_Allreduce(&nlocal, &ntotal, 1, MPI_INT, MPI_SUM, io->comm);
+  if (ntotal != ngroup) ifail = MPI_ERR_IO;
 
-  if (myrank == 0) {
-    if (ntotal != ngroup) {
-      pe_t * pe = io->info->pe;
-      pe_verbose(pe, "Colloid I/O group %d\n", io->subfile.index);
-      pe_verbose(pe, "Colloids in file: %d Got %d\n", ngroup, ntotal);
-      pe_fatal(pe,   "Total number of colloids not consistent with file\n");
-    }
+  if (ifail == MPI_SUCCESS) {
+    colloids_info_ntotal_set(io->info);
+    colloids_info_ntotal(io->info, &ntotal);
+    pe_info(io->info->pe, "Read a total of %d colloids from file\n", ntotal);
+  }
+  else {
+    pe_t * pe = io->info->pe;
+    pe_info(pe, "Error reading colloid file (group %d)\n", io->subfile.index);
+    pe_info(pe, "Header says: %d colloids expected.\n", ngroup);
+    pe_info(pe, "Read and initialised in cell list only: %d\n", ntotal);
   }
 
-  colloids_info_ntotal_set(io->info);
-  colloids_info_ntotal(io->info, &ntotal);
-  pe_info(io->info->pe, "Read a total of %d colloids from file\n", ntotal);
+  return ifail;
+}
 
-  return 0;
+/*****************************************************************************
+ *
+ *  colloid_io_ansi_errno_to_mpierr
+ *
+ *  Translate a standard errno.h errno to MPI_ERR value.
+ *  This allows returning a uniform failure code.
+ *
+ *****************************************************************************/
+
+static int colloid_io_ansi_errno_to_mpierr(int ierr) {
+
+  int ifail = MPI_SUCCESS;
+
+  assert(MPI_SUCCESS == 0); /* We agree on what is success */
+
+  if (ierr == ENOENT) {
+    ifail = MPI_ERR_NO_SUCH_FILE;
+  }
+  else if (ierr != 0) {
+    ifail = MPI_ERR_IO;
+  }
+
+  return ifail;
 }

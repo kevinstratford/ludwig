@@ -2,7 +2,12 @@
  *
  *  colloid_io_impl_mpio.c
  *
- *  MPI/IO implementation.
+ *  MPI/IO implementation for input and output to a single file, the
+ *  ordering of which is decomposition independent.
+ *
+ *  There is a requirement that the indices of the colloids are
+ *  {1, ..., ntotal} without gaps.
+ *
  *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
@@ -122,8 +127,10 @@ int colloid_io_mpio_initialise(const colloids_info_t * info,
   io->super.impl = &vt_;
   io->info       = (colloids_info_t *) info;
 
-  /* Options! */
-  /* FIXME currently in lieu of options */
+  /* We will always use one file at the moment. */
+  /* There is no evidence that more than one file is required in the
+   * MPI/IO picture. */
+
   {
     int iogrid[3] = {1, 1, 1};
     int ifail     = io_subfile_create(io->info->cs, iogrid, &io->subfile);
@@ -258,7 +265,7 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
   /* If nlocal is zero, we must still make the collective call */
   /* (1 + nlocal) to ensure no zero-sized allocations */
 
-  if (asc) nbufsz = COLLOID_BUFSZ;
+  if (asc) nbufsz = LUDWIG_COLLOID_IO_BUFSZ;
   if (bin) nbufsz = sizeof(colloid_state_t);
 
   buf = (char *) calloc((1 + nlocal)*nbufsz, sizeof(char));
@@ -305,6 +312,11 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
     MPI_Type_create_indexed_block(nlocal, 1, idisp, etype, &filetype);
     MPI_Type_commit(&filetype);
 
+    /* Clobber any existing file (this is "standard operating procedure") */
+    /* Ignore any errors (e.g., file does not exist) */
+
+    ifail = MPI_File_delete(filename, MPI_INFO_NULL);
+
     /* File */
     {
       MPI_File   fh    = MPI_FILE_NULL;
@@ -315,7 +327,8 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
       int rank  = 0;
 
       /* Size of header (bytes), i.e., displacement of first record */
-      /* FIXME magic number */
+      /* The ASCII header is 23 characters (see format below) */
+      /* The binary header is just one int (ntotal) */
       if (asc) hdisp = 23*sizeof(char);
       if (bin) hdisp = sizeof(int);
 
@@ -330,7 +343,7 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
 
         if (asc) snprintf(hdr, hdisp + 1, "%22d\n", ntotal);
         if (bin) memcpy(hdr, &ntotal, sizeof(int));
-        assert(sizeof(int) == 4*sizeof(char)); /* Binary to be more robust */
+        assert(sizeof(int) == 4*sizeof(char)); /* For binary case. */
 
         ifail = MPI_File_write_at(fh, 0, hdr, hdisp, MPI_CHAR,
 				  MPI_STATUS_IGNORE);
@@ -375,10 +388,10 @@ int colloid_io_mpio_read_ascii(colloid_io_mpio_t * io, FILE * fp) {
   if (nr != 1) goto err;
 
   for (int n = 0; n < nread; n++) {
-    char            buf[COLLOID_BUFSZ + 1] = {0}; /* Make sure we have a \0 */
-    colloid_state_t s                      = {0};
+    char buf[LUDWIG_COLLOID_IO_BUFSZ + 1] = {0}; /* Make sure we have a \0 */
+    colloid_state_t s                     = {0};
 
-    nr = fread(buf, COLLOID_BUFSZ*sizeof(char), 1, fp);
+    nr = fread(buf, LUDWIG_COLLOID_IO_BUFSZ*sizeof(char), 1, fp);
     if (nr != 1) goto err;
     ifail = colloid_state_io_read_buf_ascii(&s, buf);
     if (ifail != 0) goto err;
@@ -447,7 +460,9 @@ err:
   /* This is collective so cannot by-pass on error */
   /* The only check we can make here is that the global total is correct
    * compared with the number declared in the file */
-  /* FIXME: THIS IS NO GOOD IF NFILES > 1 (need the xcomm) */
+  /* True for single file. */
+  assert(io->subfile.nfile == 1);
+
   {
     int nlocal = 0;
     colloids_info_nlocal(io->info, &nlocal);

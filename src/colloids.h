@@ -105,10 +105,8 @@ struct colloids_info_s {
   int ncells;                 /* Total number of cells */
 
   int nsubgrid;               /* Total number of subgrid particles */
-  int rebuild_freq;           /* Rebuild shape every so many steps */
 
   double rho0;                /* Mean density (usually matches fluid) */
-  double drmax;               /* Maximum movement per time step */
 
   int isgravity;              /* Gravity flag */
   int isbuoyancy;             /* Buoyancy flag */
@@ -128,21 +126,22 @@ struct colloids_info_s {
   colloids_info_t * target;   /* Copy of this structure on target */
 };
 
-__host__ int colloids_info_create(pe_t * pe, cs_t * cs, int ncell[3],
-				  colloids_info_t ** pinfo);
-__host__ void colloids_info_free(colloids_info_t * info);
-__host__ int colloids_info_recreate(int newcell[3], colloids_info_t ** pinfo);
+
+int colloids_info_create(pe_t * pe, cs_t * cs, const colloid_options_t * opts,
+			 colloids_info_t ** info);
+void colloids_info_free(colloids_info_t ** info);
+
+int colloids_info_recreate(const colloid_options_t * newopts,
+			   colloids_info_t ** info);
+
 __host__ int colloids_memcpy(colloids_info_t * info, int flag);
 __host__ int colloids_info_rho0(colloids_info_t * cinfo, double * rho0);
 __host__ int colloids_info_rho0_set(colloids_info_t * cinfo, double rho0);
-__host__ int colloids_info_map_init(colloids_info_t * info);
 __host__ int colloids_info_ncell(colloids_info_t * info, int ncell[3]);
 __host__ int colloids_info_nhalo(colloids_info_t * info, int * nhalo);
 __host__ int colloids_info_ntotal(colloids_info_t * info, int * ntotal);
 __host__ int colloids_info_nlocal(colloids_info_t * cinfo, int * nlocal);
 __host__ int colloids_info_ntotal_set(colloids_info_t * cinfo);
-__host__ int colloids_info_rebuild_freq(colloids_info_t * cinfo, int * nf);
-__host__ int colloids_info_rebuild_freq_set(colloids_info_t * cinfo, int nf);
 __host__ int colloids_info_map(colloids_info_t * info, int index, colloid_t ** pc);
 __host__ int colloids_info_map_old(colloids_info_t * info, int index, colloid_t ** pc);
 __host__ int colloids_info_cell_index(colloids_info_t * cinfo, int ic, int jc, int kc);
@@ -190,6 +189,10 @@ __host__ int colloids_ellipsoid_abc_check(colloids_info_t * info);
 __host__ int colloids_buoyancy_set(colloids_info_t * cinfo, const double b[3]);
 __host__ int colloids_gravity_set(colloids_info_t * cinfo, const double g[3]);
 
+
+
+int colloids_info_add_state_local(colloids_info_t * info,
+				  const colloid_state_t * state);
 int colloids_info_initialise(pe_t * pe, cs_t * cs,
 			     const colloid_options_t * options,
 			     colloids_info_t * info);

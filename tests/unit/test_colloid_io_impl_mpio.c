@@ -73,10 +73,11 @@ int test_colloid_io_mpio_initialise(pe_t * pe) {
 
   {
     int               ncell[3] = {8, 8, 8};
+    colloid_options_t options  = colloid_options_ncell(ncell);
     colloids_info_t * info     = NULL;
     colloid_io_mpio_t io       = {0};
 
-    colloids_info_create(pe, cs, ncell, &info);
+    colloids_info_create(pe, cs, &options, &info);
     ifail = colloid_io_mpio_initialise(info, &io);
     assert(ifail == 0);
 
@@ -88,7 +89,7 @@ int test_colloid_io_mpio_initialise(pe_t * pe) {
     assert(io.comm != MPI_COMM_NULL);
 
     colloid_io_mpio_finalise(&io);
-    colloids_info_free(info);
+    colloids_info_free(&info);
   }
 
   cs_free(cs);
@@ -108,19 +109,20 @@ int test_colloid_io_mpio_finalise(pe_t * pe) {
   int    ncell[3] = {8, 8, 8};
   cs_t * cs       = NULL;
 
+  colloid_options_t opts = colloid_options_ncell(ncell);
   colloids_info_t * info = NULL;
   colloid_io_mpio_t io   = {0};
 
   cs_create(pe, &cs);
   cs_init(cs);
-  colloids_info_create(pe, cs, ncell, &info);
+  colloids_info_create(pe, cs, &opts, &info);
 
   ifail = colloid_io_mpio_initialise(info, &io);
   colloid_io_mpio_finalise(&io);
   assert(io.info == NULL);
   assert(io.comm == MPI_COMM_NULL);
 
-  colloids_info_free(info);
+  colloids_info_free(&info);
   cs_free(cs);
 
   return ifail;
@@ -142,16 +144,17 @@ int test_colloid_io_mpio_create(pe_t * pe) {
 
   {
     int                 ncell[3] = {8, 8, 8};
+    colloid_options_t   options  = colloid_options_ncell(ncell);
     colloids_info_t *   info     = NULL;
     colloid_io_mpio_t * io       = NULL;
 
-    colloids_info_create(pe, cs, ncell, &info);
+    colloids_info_create(pe, cs, &options, &info);
     ifail = colloid_io_mpio_create(info, &io);
     assert(ifail == 0);
     assert(io->comm != MPI_COMM_NULL);
 
     colloid_io_mpio_free(&io);
-    colloids_info_free(info);
+    colloids_info_free(&info);
   }
 
   cs_free(cs);
@@ -171,12 +174,13 @@ int test_colloid_io_mpio_free(pe_t * pe) {
   int    ncell[3] = {8, 8, 8};
   cs_t * cs       = NULL;
 
+  colloid_options_t   opts = colloid_options_ncell(ncell);
   colloids_info_t *   info = NULL;
   colloid_io_mpio_t * io   = NULL;
 
   cs_create(pe, &cs);
   cs_init(cs);
-  colloids_info_create(pe, cs, ncell, &info);
+  colloids_info_create(pe, cs, &opts, &info);
 
   /* The test, such as it is ... */
   ifail = colloid_io_mpio_create(info, &io);
@@ -184,7 +188,7 @@ int test_colloid_io_mpio_free(pe_t * pe) {
   assert(ifail == 0);
   assert(io == NULL);
 
-  colloids_info_free(info);
+  colloids_info_free(&info);
   cs_free(cs);
 
   return ifail;
