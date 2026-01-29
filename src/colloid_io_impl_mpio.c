@@ -134,9 +134,7 @@ int colloid_io_mpio_initialise(const colloids_info_t * info,
   {
     int iogrid[3] = {1, 1, 1};
     int ifail     = io_subfile_create(io->info->cs, iogrid, &io->subfile);
-    if (ifail != 0) {
-      goto err;
-    }
+    if (ifail != 0) goto err;
   }
 
   {
@@ -244,7 +242,7 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
 
   int                 nlocal = 0;
   int                 ntotal = 0;
-  size_t              nbufsz = -1;
+  size_t              nbufsz = 0;
   int *               idisp  = NULL;
   char *              buf    = NULL;
   colloid_t *         pc     = NULL;
@@ -343,11 +341,14 @@ int colloid_io_mpio_write(colloid_io_mpio_t * io, const char * filename) {
 
         if (asc) snprintf(hdr, hdisp + 1, "%22d\n", ntotal);
         if (bin) memcpy(hdr, &ntotal, sizeof(int));
+
         assert(sizeof(int) == 4*sizeof(char)); /* For binary case. */
 
-        ifail = MPI_File_write_at(fh, 0, hdr, hdisp, MPI_CHAR,
-				  MPI_STATUS_IGNORE);
-        if (ifail != MPI_SUCCESS) goto err_file;
+        ifail =
+            MPI_File_write_at(fh, 0, hdr, hdisp, MPI_CHAR, MPI_STATUS_IGNORE);
+        if (ifail != MPI_SUCCESS) {
+          goto err_file;
+        }
       }
 
       ifail = MPI_File_set_view(fh, hdisp, etype, filetype, "native", info);
@@ -393,8 +394,10 @@ int colloid_io_mpio_read_ascii(colloid_io_mpio_t * io, FILE * fp) {
 
     nr = fread(buf, LUDWIG_COLLOID_IO_BUFSZ*sizeof(char), 1, fp);
     if (nr != 1) goto err;
+
     ifail = colloid_state_io_read_buf_ascii(&s, buf);
     if (ifail != 0) goto err;
+
     /* Add if local and assign the state */
     {
       colloid_t * pc = NULL;
@@ -438,12 +441,12 @@ int colloid_io_mpio_read_binary(colloid_io_mpio_t * io, FILE * fp) {
 
   /* Data: one at a time at the moment */
   for (int n = 0; n < nread; n++) {
-    const size_t    nbufsz          = sizeof(colloid_state_t);
-    char            buf[nbufsz + 1] = {}; /* Make sure we have a \0 */
-    colloid_state_t s               = {0};
+    char buf[1 + sizeof(colloid_state_t)] = {0}; /* Make sure we have a \0 */
+    colloid_state_t s                     = {0};
 
-    nr = fread(buf, nbufsz, 1, fp);
+    nr = fread(buf, sizeof(colloid_state_t), 1, fp);
     if (nr != 1) goto err;
+
     ifail = colloid_state_io_read_buf(&s, buf);
     if (ifail != 0) goto err;
 
