@@ -17,7 +17,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2021-2025 The University of Edinburgh
+ *  (c) 2021-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -2031,6 +2031,9 @@ int MPI_Type_size(MPI_Datatype datatype, int * sz) {
  *
  *  MPI_File_open
  *
+ *  We are not handling all possible modes at the moment, e.g.,
+ *  MPI_MODE_DELETE_ON_CLOSE
+ *
  *****************************************************************************/
 
 int MPI_File_open(MPI_Comm comm, const char * filename, int amode,
@@ -2149,8 +2152,6 @@ int MPI_File_close(MPI_File * fh) {
     FILE * fp = mpi_file_handle_release(mpi_info_, *fh);
     fclose(fp);
   }
-
-  /* FIXME. Could check for MODE_DELETE_ON_CLOSE and action */
 
   *fh = MPI_FILE_NULL;
 
