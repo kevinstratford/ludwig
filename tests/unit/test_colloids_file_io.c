@@ -3,6 +3,7 @@
  *  test_colloids_file_io.c
  *
  *  File assets required:
+ *
  *    colloids-file-io-read.dat
  *
  *  Actually a symbolic link.
@@ -159,6 +160,9 @@ int test_colloids_file_io_write(pe_t * pe) {
   /* Bad filename */
   {
     ifail = colloids_file_io_write(&fio, "");
+    /* Only root my get the open failure. */
+    /* This broadcast would best be done in the io communicator... */
+    MPI_Bcast(&ifail, 1, MPI_INT, 0, MPI_COMM_WORLD);
     assert(ifail == MPI_ERR_NO_SUCH_FILE);
   }
 
