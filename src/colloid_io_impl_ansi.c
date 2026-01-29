@@ -167,6 +167,7 @@ int colloid_io_ansi_write(colloid_io_ansi_t * io, const char * filename) {
   int   nranks = -1;
   int   nlocal = 0;
   int   ntotal = 0;
+  int   nalloc = 1;
   int * nclist = NULL;
   int * displ  = NULL;
 
@@ -189,13 +190,17 @@ int colloid_io_ansi_write(colloid_io_ansi_t * io, const char * filename) {
   if (nclist == NULL) goto err;
 
   colloids_info_nlocal(io->info, &nlocal);
-  assert(nlocal > 0); /* Assume all files have at least 1 colloid */
+
+  /* We must allow that a given rank has no colloids ... */
+  /* ... but no zero-sized allocations please. */
+  assert(nlocal >= 0);
+  if (nlocal > 0) nalloc = nlocal;
 
   MPI_Gather(&nlocal, 1, MPI_INT, nclist, 1, MPI_INT, 0, io->comm);
 
   /* Allocate local buffer, pack. */
 
-  ifail = colloid_array_alloc(0, nlocal, &cbuf);
+  ifail = colloid_array_alloc(0, nalloc, &cbuf);
   if (ifail != 0) goto err;
 
   {
