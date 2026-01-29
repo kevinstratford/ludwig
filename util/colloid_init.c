@@ -146,7 +146,7 @@ int main(int argc, char ** argv) {
       printf("%s: option -v sets vf = %f\n", argv[0], vf);
       break;
     case 'X': {
-      size_t nx = -1;
+      size_t nx = 0;
       if (1 != sscanf(argv[optind + 1], "%zu", &nx)) {
         printf("-X: cannot interpret %s as integer\n", argv[optind + 1]);
         exit(-1);
@@ -159,7 +159,7 @@ int main(int argc, char ** argv) {
       }
     } break;
     case 'Y': {
-      size_t ny = -1;
+      size_t ny = 0;
       if (1 != sscanf(argv[optind + 1], "%zu", &ny)) {
         printf("-Y: cannot interpret %s as integer\n", argv[optind + 1]);
         exit(-1);
@@ -172,7 +172,7 @@ int main(int argc, char ** argv) {
       }
     } break;
     case 'Z': {
-      size_t nz = -1;
+      size_t nz = 0;
       if (1 != sscanf(argv[optind + 1], "%zu", &nz)) {
         printf("-Z: cannot interpret %s as integer\n", argv[optind + 1]);
         exit(-1);
