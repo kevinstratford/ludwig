@@ -2,6 +2,11 @@
  *
  *  test_colloids_file_io.c
  *
+ *  File assets required:
+ *    colloids-file-io-read.dat
+ *
+ *  Actually a symbolic link.
+ *
  *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
@@ -206,7 +211,7 @@ int test_colloids_file_io_read(pe_t * pe) {
 
   /* Valid file (ascii) */
   {
-    ifail = colloids_file_io_read(&fio, "colloid-ansi-ascii.001-001");
+    ifail = colloids_file_io_read(&fio, "colloids-file-io-read.dat");
     assert(ifail == MPI_SUCCESS);
   }
 

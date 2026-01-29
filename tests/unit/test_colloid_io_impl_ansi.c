@@ -3,13 +3,13 @@
  *  test_colloid_io_impl_ansi.c
  *
  *  File assets for this test:
- *    colloid-ansi-ascii.001-001     via util/colloid_init -v 0.02 ...
- *    colloid-ansi-binary.001-001    ... for size {64, 64, 64}.
+ *    colloid-io-ansi-read-ascii.dat         via util/colloid_init -v 0.02 ...
+ *    colloid-io-ansi-read-binary.dat        ... for size {64, 64, 64}.
  *
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc,ed.ac.uk)
  *
@@ -161,7 +161,7 @@ int test_colloid_io_ansi_read(pe_t * pe) {
     ifail = colloid_io_ansi_create(&info, &io);
     assert(ifail == 0);
 
-    ifail = colloid_io_ansi_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_ansi_read(io, "colloid-io-ansi-read-ascii.dat");
     assert(ifail == 0);
     assert(io->info->ntotal == 102); /* Total after read, all ranks */
 
@@ -186,7 +186,7 @@ int test_colloid_io_ansi_read(pe_t * pe) {
       ifail = colloid_io_impl_input(&info, &io);
       assert(ifail == 0);
 
-      ifail = io->impl->read(io, "colloid-ansi-binary.001.001");
+      ifail = io->impl->read(io, "colloid-io-ansi-read-binary.dat");
       assert(ifail == 0);
       assert(info.ntotal == 49); /* Total after read, all ranks */
 
@@ -225,7 +225,7 @@ int test_colloid_io_ansi_write(pe_t * pe) {
     colloids_info_initialise(pe, cs, &opts, &info);
     ifail = colloid_io_ansi_create(&info, &io);
 
-    ifail = colloid_io_ansi_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_ansi_read(io, "colloid-io-ansi-read-ascii.dat");
     assert(ifail == 0);
 
     ifail = colloid_io_ansi_write(io, "colloids-ansi-write-ascii.dat");
@@ -249,7 +249,7 @@ int test_colloid_io_ansi_write(pe_t * pe) {
       colloid_io_ansi_t * input = NULL;
 
       ifail = colloid_io_ansi_create(&info, &input);
-      ifail = colloid_io_ansi_read(input, "colloid-ansi-ascii.001-001");
+      ifail = colloid_io_ansi_read(input, "colloid-io-ansi-read-ascii.dat");
       colloid_io_ansi_free(&input);
       assert(ifail == 0);
     }

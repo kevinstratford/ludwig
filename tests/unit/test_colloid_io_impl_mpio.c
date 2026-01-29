@@ -2,13 +2,19 @@
  *
  *  test_colloid_io_impl_mpio.c
  *
+ *  File assets:
+ *    colloid-io-mpio-read-ascii.dat
+ *    colloid-io-mpio-read-ascii.dat
+ *
+ *  Actually symbolic links to the ansi files.
+ *
  *  See also test_colloid_io_impl_ansi.c for comments on file assets.
  *
  *
  *  Edinburgh Soft Matter and Statisical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -224,7 +230,7 @@ int test_colloid_io_mpio_read(pe_t * pe) {
     ifail = colloid_io_mpio_create(&info, &io);
     assert(ifail == 0);
 
-    ifail = colloid_io_mpio_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_mpio_read(io, "colloid-io-mpio-read-ascii.dat");
     assert(ifail == 0);
     assert(io->info->ntotal == 102); /* Total after read, all ranks */
 
@@ -251,7 +257,7 @@ int test_colloid_io_mpio_read(pe_t * pe) {
       ifail = colloid_io_impl_input(&info, &io);
       assert(ifail == 0);
 
-      ifail = io->impl->read(io, "colloid-ansi-binary.001.001");
+      ifail = io->impl->read(io, "colloid-io-mpio-read-binary.dat");
       assert(ifail == 0);
       assert(info.ntotal == 49); /* Total after read, all ranks */
 
@@ -290,7 +296,7 @@ int test_colloid_io_mpio_write(pe_t * pe) {
     colloids_info_initialise(pe, cs, &opts, &info);
     ifail = colloid_io_mpio_create(&info, &io);
 
-    ifail = colloid_io_mpio_read(io, "colloid-ansi-ascii.001-001");
+    ifail = colloid_io_mpio_read(io, "colloid-io-mpio-read-ascii.dat");
     assert(ifail == 0);
 
     ifail = colloid_io_mpio_write(io, "colloid-mpio-write-ascii.dat");
@@ -314,7 +320,7 @@ int test_colloid_io_mpio_write(pe_t * pe) {
       colloid_io_mpio_t * input = NULL;
 
       ifail = colloid_io_mpio_create(&info, &input);
-      ifail = colloid_io_mpio_read(input, "colloid-ansi-ascii.001-001");
+      ifail = colloid_io_mpio_read(input, "colloid-io-mpio-read-ascii.dat");
       colloid_io_mpio_free(&input);
       assert(ifail == 0);
     }
