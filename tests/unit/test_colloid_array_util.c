@@ -5,7 +5,7 @@
  *  Edinburgh Soft Matter and Statistical Physics Group and
  *  Edinburgh Parallel Computing Centre
  *
- *  (c) 2025 The University of Edinburgh
+ *  (c) 2025-2026 The University of Edinburgh
  *
  *  Kevin Stratford (kevin@epcc.ed.ac.uk)
  *
@@ -110,7 +110,7 @@ int test_colloid_array_free(void) {
     colloid_array_free(&buf);
     assert(buf.managed == 0);
     assert(buf.ntotal  == 0);
-    assert(buf.data == NULL);
+    assert(buf.data    == NULL);
   }
 
   /* Managed */
@@ -126,7 +126,7 @@ int test_colloid_array_free(void) {
     colloid_array_free(&buf);
     assert(buf.managed == 0);
     assert(buf.ntotal  == 0);
-    assert(buf.data == NULL);
+    assert(buf.data    == NULL);
   }
 
   return ifail;
@@ -161,7 +161,7 @@ int test_colloid_array_alloc_host(void) {
     assert(ifail == 0);
 
     assert(buf.managed == managed);
-    assert(buf.ntotal == ntotal);
+    assert(buf.ntotal  == ntotal);
     assert(buf.data != NULL);
 
     for (int i = 0; i < buf.ntotal; i++) {
@@ -246,8 +246,8 @@ int test_colloid_array_alloc_managed(void) {
     ifail = colloid_array_alloc(managed, ntotal, &buf);
     assert(ifail == 0);
     assert(buf.managed == managed);
-    assert(buf.ntotal == ntotal);
-    assert(buf.data != NULL);
+    assert(buf.ntotal  == ntotal);
+    assert(buf.data    != NULL);
 
     /* We have the right to access these elements ... */
     for (int i = 0; i < buf.ntotal; i++) {
@@ -258,8 +258,10 @@ int test_colloid_array_alloc_managed(void) {
     /* Values should be reflected in a kernel */
     /* Run one block for each array element.  */
     {
-      dim3 blocks  = {ntotal, 1, 1};
+      dim3 blocks  = {  1, 1, 1};
       dim3 threads = {128, 1, 1};
+
+      blocks.x = ntotal;
 
       tdpLaunchKernel(kernel1, blocks, threads, 0, 0, ntotal, buf);
       tdpAssert(tdpStreamSynchronize(0));
@@ -279,8 +281,10 @@ int test_colloid_array_alloc_managed(void) {
     /* Kernel; again one block per element, */
     /* kernel2 assigns values */
     {
-      dim3 blocks  = {ntotal, 1, 1};
+      dim3 blocks  = { 1, 1, 1};
       dim3 threads = {32, 1, 1};
+
+      blocks.x = ntotal;
 
       tdpLaunchKernel(kernel2, blocks, threads, 0, 0, ntotal, buf);
       tdpAssert(tdpStreamSynchronize(0));
@@ -288,7 +292,9 @@ int test_colloid_array_alloc_managed(void) {
 
     /* And check ... */
     for (int i = 0; i < buf.ntotal; i++) {
-      if (buf.data[i].index != 1 + i) ifail = -1;
+      if (buf.data[i].index != 1 + i) {
+        ifail = -1;
+      }
       assert(ifail == 0);
     }
 
@@ -317,7 +323,7 @@ int test_colloid_array_realloc_host(void) {
     assert(ifail == 0);
 
     assert(buf.managed == 0);
-    assert(buf.ntotal == newtotal);
+    assert(buf.ntotal  == newtotal);
     assert(buf.data);
 
     /* Check elements can be accessed */
@@ -352,7 +358,9 @@ int test_colloid_array_realloc_host(void) {
     /* Check existing data, and assess the new data. */
     for (int i = 0; i < buf.ntotal; i++) {
       if (i < ntotal) {
-        if (buf.data[i].index != 1 + i) ifail = -1;
+        if (buf.data[i].index != 1 + i) {
+          ifail = -1;
+        }
         assert(ifail == 0);
       }
       buf.data[i] = (colloid_state_t) {0};
@@ -388,8 +396,11 @@ int test_colloid_array_realloc_managed(void) {
     ifail = colloid_array_alloc(managed, ntotal, &buf);
 
     {
-      dim3 blocks  = {ntotal, 1, 1};
+      dim3 blocks  = { 1, 1, 1};
       dim3 threads = {32, 1, 1};
+
+      blocks.x = ntotal;
+
       tdpLaunchKernel(kernel2, blocks, threads, 0, 0, ntotal, buf);
       tdpAssert(tdpStreamSynchronize(0));
     }
@@ -399,7 +410,7 @@ int test_colloid_array_realloc_managed(void) {
     assert(ifail == 0);
 
     assert(buf.managed == 1);
-    assert(buf.ntotal == newtotal);
+    assert(buf.ntotal  == newtotal);
     assert(buf.data);
 
     /* set additional values ... */
@@ -410,8 +421,10 @@ int test_colloid_array_realloc_managed(void) {
 
     /* Recheck */
     {
-      dim3 blocks  = {newtotal, 1, 1};
+      dim3 blocks  = { 1, 1, 1};
       dim3 threads = {32, 1, 1};
+
+      blocks.x = newtotal;
 
       tdpLaunchKernel(kernel1, blocks, threads, 0, 0, newtotal, buf);
       tdpAssert(tdpStreamSynchronize(0));
